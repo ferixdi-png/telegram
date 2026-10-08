@@ -727,6 +727,14 @@ async def receive_video_or_animation(update: Update, context: ContextTypes.DEFAU
         )
 
 
+async def clear_used_button(query):
+    """Remove the previous navigation button without blocking the new lesson."""
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except TelegramError:
+        pass
+
+
 async def next_step(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -736,18 +744,21 @@ async def next_step(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if not 0 <= index <= len(STEPS):
         return
-    try:
-        await query.edit_message_reply_markup(reply_markup=None)
-    except Exception:
-        pass
     if 0 <= index < len(STEPS):
-        await send_lesson(query.message, index)
+        await asyncio.gather(
+            clear_used_button(query),
+            send_lesson(query.message, index),
+        )
+        prefetch_upcoming_step(index + 2)
     else:
-        await query.message.reply_text(
-            page(index),
-            reply_markup=keyboard(index),
-            disable_web_page_preview=True,
-            parse_mode="HTML",
+        await asyncio.gather(
+            clear_used_button(query),
+            query.message.reply_text(
+                page(index),
+                reply_markup=keyboard(index),
+                disable_web_page_preview=True,
+                parse_mode="HTML",
+            ),
         )
     log.info("funnel_step=%s", index)
 
