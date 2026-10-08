@@ -101,6 +101,7 @@ STEP_MP4_DOCUMENT_IDS = {
     7: "BQACAgIAAxkBAAPvasdgIQwo0omOxuvXTGk6F0EgBcIAAqijAAJF4DhKoDOo14uiGa49BA",
     8: "BQACAgIAAxkBAAPxasdguK8KFAiPz7G1odcwsYAwfDkAAq-jAAJF4DhK0lrLjFuxvTs9BA",
     9: "BQACAgIAAxkBAAPzasdhOiu1Z-h5AAEC7P5ZyHTSn2YUAAK1owACReA4SozzZUCtJxRkPQQ",
+    10: "BQACAgIAAxkBAAP1asdhull9p_Nt9ueclc3IEAMG5kkAArujAAJF4DhKajE4ZQhotL49BA",
 }
 cached_step_animation_ids = {}
 step_animation_locks = {number: asyncio.Lock() for number in STEP_MP4_DOCUMENT_IDS}
