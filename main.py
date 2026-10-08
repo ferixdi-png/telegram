@@ -10,7 +10,7 @@ from content import STEPS, INTRO, CASES, OFFER, COURSE_URL
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("ferixdi")
 TOKEN = os.environ["BOT_TOKEN"]
-WEBHOOK_BASE_URL = os.environ["WEBHOOK_BASE_URL"].rstrip("/")
+WEBHOOK_BASE_URL = (os.getenv("WEBHOOK_BASE_URL") or "https://" + os.environ["RENDER_EXTERNAL_HOSTNAME"]).rstrip("/")
 WEBHOOK_SECRET = os.environ["WEBHOOK_SECRET"]
 PATH = "/telegram/webhook"
 appbot = Application.builder().token(TOKEN).updater(None).build()
