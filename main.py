@@ -9,7 +9,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Mess
 from telegram.error import TelegramError
 from content import (
     STEPS, INTRO, SHOWCASE, CASES, VIDEO_HOOK, CASES_URL, VIDEO_CAPTION,
-    FINAL_MENU, JOIN_TEXT, STUDENT_TEXT, BUDGET_TEXT, MARKET_TEXT, LATER_TEXT, CONTACT_URL,
+    FINAL_MENU, JOIN_TEXT, STUDENT_TEXT, BUDGET_TEXT, MARKET_TEXT, ZERO_TEXT, LATER_TEXT, CONTACT_URL,
 )
 from video_source import get_original_video, VIDEO_SOURCE_URL
 
@@ -59,11 +59,12 @@ def route_keyboard(route: str):
             [InlineKeyboardButton("✅ Я уже на обучении", callback_data="route:student")],
             [InlineKeyboardButton("💸 Пока дороговато", callback_data="route:budget")],
             [InlineKeyboardButton("🤖 AI-рынок перегрет?", callback_data="route:market")],
+            [InlineKeyboardButton("🚀 С нуля сейчас сложно?", callback_data="route:zero")],
             [InlineKeyboardButton("⏳ Вернусь к этому позже", callback_data="route:later")],
             [InlineKeyboardButton("📊 Сайт и реальные кейсы", url=CASES_URL)],
         ])
 
-    if route in ("join", "budget", "market"):
+    if route in ("join", "budget", "market", "zero"):
         return InlineKeyboardMarkup([
             [InlineKeyboardButton("📊 Программа и кейсы на сайте", url=CASES_URL)],
             [InlineKeyboardButton("💬 Написать @ferixdiii", url=CONTACT_URL)],
@@ -218,7 +219,7 @@ async def fileid(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     source = "Telegram file_id" if cached_video_file_id else "GitHub Releases"
     await update.message.reply_text(
-        "🛠 Ferixdi Bot v2.7\n"
+        "🛠 Ferixdi Bot v2.8\n"
         "15 мифов и кнопки активны.\n"
         f"Видео: источник {source}.\n"
         f"Примеры: {len(example_photo_ids)} фото."
@@ -310,6 +311,7 @@ async def final_route(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "student": STUDENT_TEXT,
         "budget": BUDGET_TEXT,
         "market": MARKET_TEXT,
+        "zero": ZERO_TEXT,
         "later": LATER_TEXT,
     }
     if route not in copy:
@@ -334,7 +336,7 @@ appbot.add_handler(CallbackQueryHandler(next_step, pattern=r"^next:\d+$"))
 appbot.add_handler(CallbackQueryHandler(show_examples, pattern=r"^show_examples$"))
 appbot.add_handler(CallbackQueryHandler(final_video, pattern=r"^final_video$"))
 appbot.add_handler(CallbackQueryHandler(video_finished, pattern=r"^video_finished$"))
-appbot.add_handler(CallbackQueryHandler(final_route, pattern=r"^route:(menu|join|student|budget|market|later)$"))
+appbot.add_handler(CallbackQueryHandler(final_route, pattern=r"^route:(menu|join|student|budget|market|zero|later)$"))
 
 @asynccontextmanager
 async def lifespan(app):
