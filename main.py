@@ -418,7 +418,7 @@ async def bot_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    source = "Telegram file_id" if cached_video_file_id else "GitHub Releases"
+    source = "Telegram file_id" if cached_video_file_id else "GitHub Releases (проверь, прикреплён ли MP4)"
     await update.message.reply_text(
         "🛠 Ferixdi Bot v4.0\n"
         "16 мифов в 10 разборах. Кнопки активны.\n"
@@ -469,7 +469,7 @@ async def deliver_original_video(source_message):
     except Exception as exc:
         log.warning("Original video delivery failed: %s", type(exc).__name__)
         await source_message.reply_text(
-            "🎬 Видео сейчас готовится к выдаче. Загляни чуть позже."
+            "🎬 Исходный MP4 сейчас отправить не получилось. Напиши @ferixdiii, проверю файл ❤️"
         )
 
 
