@@ -506,6 +506,43 @@ async def galleryclear(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def load_step_mp4(number: int):
+    """Fetch the next source file while the user reads the current screen."""
+    try:
+        source = await appbot.bot.get_file(STEP_MP4_DOCUMENT_IDS[number])
+        return await source.download_as_bytearray()
+    except (TelegramError, OSError, ValueError) as exc:
+        log.warning("prefetch_step_failed step=%02d: %s", number, type(exc).__name__)
+        return None
+
+
+def prefetch_upcoming_step(number: int):
+    """Bound memory to two prefetched MP4s; skip files with ready animation IDs."""
+    if (
+        number not in STEP_MP4_DOCUMENT_IDS
+        or number in step_animation_ids
+        or number in cached_step_animation_ids
+        or number in prefetched_step_tasks
+    ):
+        return
+    for previous, task in list(prefetched_step_tasks.items()):
+        if task.done():
+            prefetched_step_tasks.pop(previous, None)
+    if len(prefetched_step_tasks) >= 2:
+        return
+    prefetched_step_tasks[number] = appbot.create_task(load_step_mp4(number))
+
+
+async def get_lesson_mp4(number: int):
+    """Reuse a prefetched download or fall back to the normal Telegram request."""
+    task = prefetched_step_tasks.pop(number, None)
+    if task is not None:
+        result = await task
+        if result is not None:
+            return result
+    return await load_step_mp4(number)
+
+
 async def send_lesson(source_message, index: int):
     """Show a looping MP4/GIF, complete lesson caption, and the existing next button."""
     number = index + 1
