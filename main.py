@@ -4,10 +4,10 @@ import logging
 from html import escape
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from telegram.error import TelegramError
-from content import STEPS, INTRO, CASES, VIDEO_HOOK, CASES_URL, VIDEO_CAPTION
+from content import STEPS, INTRO, SHOWCASE, CASES, VIDEO_HOOK, CASES_URL, VIDEO_CAPTION
 from video_source import get_original_video, VIDEO_SOURCE_URL
 
 logging.basicConfig(level=logging.INFO)
@@ -22,10 +22,17 @@ WEBHOOK_SECRET = os.environ["WEBHOOK_SECRET"]
 PATH = "/telegram/webhook"
 appbot = Application.builder().token(TOKEN).updater(None).build()
 cached_video_file_id = os.getenv("VIDEO_FILE_ID", "").strip()
+example_photo_ids = [v.strip() for v in os.getenv("EXAMPLE_PHOTO_IDS", "").split(",") if v.strip()][:5]
 
 def keyboard(index: int):
+    if index == -2:
+        return InlineKeyboardMarkup([[
+            InlineKeyboardButton("🏁 Теперь к 14 мифам", callback_data="next:0")
+        ]])
     if index == -1:
-        label = "⏰ Правда, что время решает?"
+        return InlineKeyboardMarkup([[
+            InlineKeyboardButton("🎬 Сначала покажи примеры", callback_data="show_examples")
+        ]])
     elif index < len(STEPS) - 1:
         label = STEPS[index]["button"]
     elif index == len(STEPS) - 1:
@@ -59,6 +66,70 @@ def page(index: int):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message:
         await update.message.reply_text(page(-1), reply_markup=keyboard(-1), disable_web_page_preview=True, parse_mode="HTML")
+
+async def show_examples(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except TelegramError:
+        pass
+
+    if example_photo_ids:
+        try:
+            if len(example_photo_ids) == 1:
+                await appbot.bot.send_photo(
+                    chat_id=query.message.chat_id,
+                    photo=example_photo_ids[0],
+                )
+            else:
+                await appbot.bot.send_media_group(
+                    chat_id=query.message.chat_id,
+                    media=[InputMediaPhoto(media=photo_id) for photo_id in example_photo_ids],
+                )
+        except TelegramError as exc:
+            log.warning("Could not send example photo gallery: %s", type(exc).__name__)
+
+    await query.message.reply_text(
+        SHOWCASE,
+        reply_markup=keyboard(-2),
+        disable_web_page_preview=True,
+        parse_mode="HTML",
+    )
+    log.info("funnel_showcase")
+
+
+async def receive_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Collect image file IDs in the sender's chat for /galleryids; not public funnel state."""
+    if not update.message or not update.message.photo:
+        return
+    ids = context.chat_data.setdefault("pending_example_ids", [])
+    new_id = update.message.photo[-1].file_id
+    if new_id not in ids:
+        ids.append(new_id)
+    context.chat_data["pending_example_ids"] = ids[-5:]
+
+
+async def galleryids(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    ids = context.chat_data.get("pending_example_ids", [])
+    if not ids:
+        await update.message.reply_text(
+            "📸 Пришли мне пять скриншотов обычными фотографиями, затем отправь /galleryids."
+        )
+        return
+    await update.message.reply_text(
+        "✅ Фото для примеров сохранены в этом чате.\n\n"
+        "Скопируй в Render → Environment:\n"
+        "KEY: EXAMPLE_PHOTO_IDS\n"
+        "VALUE:\n" + ",".join(ids) + "\n\n"
+        "Сохрани настройки и дождись Live."
+    )
+
+
+async def galleryclear(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.chat_data["pending_example_ids"] = []
+    await update.message.reply_text("📸 Подборка очищена. Можно отправлять новые фото.")
+
 
 async def next_step(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -115,9 +186,10 @@ async def fileid(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     source = "Telegram file_id" if cached_video_file_id else "GitHub Releases"
     await update.message.reply_text(
-        "🛠 Ferixdi Bot v2.3\n"
+        "🛠 Ferixdi Bot v2.4\n"
         "14 мифов и кнопки активны.\n"
-        f"Видео: источник {source}."
+        f"Видео: источник {source}.\n"
+        f"Примеры: {len(example_photo_ids)} фото."
     )
 
 
@@ -175,8 +247,12 @@ async def final_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
 appbot.add_handler(CommandHandler("start", start))
 appbot.add_handler(CommandHandler("fileid", fileid))
 appbot.add_handler(CommandHandler("status", status))
+appbot.add_handler(CommandHandler("galleryids", galleryids))
+appbot.add_handler(CommandHandler("galleryclear", galleryclear))
+appbot.add_handler(MessageHandler(filters.PHOTO, receive_photo))
 appbot.add_handler(MessageHandler(filters.Document.ALL, receive_document))
 appbot.add_handler(CallbackQueryHandler(next_step, pattern=r"^next:\d+$"))
+appbot.add_handler(CallbackQueryHandler(show_examples, pattern=r"^show_examples$"))
 appbot.add_handler(CallbackQueryHandler(final_video, pattern=r"^final_video$"))
 
 @asynccontextmanager
