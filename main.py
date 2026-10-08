@@ -91,7 +91,9 @@ def route_keyboard(route: str):
 
 def page(index: int):
     if index == -1:
-        return INTRO
+        if example_photo_ids:
+            return INTRO
+        return INTRO.replace("покажу разные форматы, ", "")
     if index < len(STEPS):
         step = STEPS[index]
         return (
