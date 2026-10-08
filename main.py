@@ -845,10 +845,10 @@ async def emoji_font(update: Update, context: ContextTypes.DEFAULT_TYPE):
     unique_ids = list(dict.fromkeys(letters))
     descriptions = [f"{letter} = {emoji_id}" for letter, emoji_id in zip(label, letters)]
     await message.reply_text(
-        f"✅ Кастомный шрифт: {label}\\n"
-        f"Найдено букв: {len(letters)}\\n\\n"
-        + "\\n".join(descriptions)
-        + "\\n\\nСкопируй этот ответ в ChatGPT. "
+        f"✅ Кастомный шрифт: {label}\n"
+        f"Найдено букв: {len(letters)}\n\n"
+        + "\n".join(descriptions)
+        + "\n\nСкопируй этот ответ в ChatGPT. "
         "По ID подключим шрифт к заголовкам бота, GIF останутся прежними."
     )
 
@@ -866,7 +866,7 @@ async def emoji_font(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for emoji_id in letters
         )
         sent = await message.reply_text(
-            "🔎 Вот как бот отправляет этот шрифт: \\n" + preview,
+            "🔎 Вот как бот отправляет этот шрифт: \n" + preview,
             parse_mode="HTML",
         )
         if not any(
