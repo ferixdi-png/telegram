@@ -375,8 +375,38 @@ async def send_intro(source_message):
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message:
+    """Acknowledge /start immediately; keep first-use MP4 conversion nonblocking."""
+    if not update.message:
+        return
+
+    progress = None
+    # On each Render restart the intro GIF cache is cold. Telegram can need
+    # significant time to download/re-upload the MP4 before the first send.
+    if not (INTRO_ANIMATION_ID or cached_intro_animation_id):
+        try:
+            progress = await update.message.reply_text("⏳ Загружаю приветствие, пару секунд...")
+        except TelegramError as exc:
+            log.warning("Start acknowledgment failed: %s", type(exc).__name__)
+
+    try:
         await send_intro(update.message)
+    except Exception:
+        log.exception("Unexpected start handler failure")
+        try:
+            await update.message.reply_text(
+                INTRO,
+                reply_markup=keyboard(-1),
+                parse_mode="HTML",
+                disable_web_page_preview=True,
+            )
+        except TelegramError as exc:
+            log.error("Could not deliver start fallback: %s", type(exc).__name__)
+    finally:
+        if progress:
+            try:
+                await progress.delete()
+            except TelegramError:
+                pass
         prefetch_upcoming_step(1)
 
 async def show_examples(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1013,7 +1043,7 @@ async def bot_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     source = "Telegram file_id" if cached_video_file_id else "GitHub Releases (проверь, прикреплён ли MP4)"
     await update.message.reply_text(
-        "🛠 Ferixdi Bot v4.21\n"
+        "🛠 Ferixdi Bot v4.22\n"
         "16 мифов в 10 разборах. Кнопки активны.\n"
         f"Видео: источник {source}.\n"
         f"Примеры: {len(example_photo_ids)} фото.\n"
@@ -1200,7 +1230,7 @@ async def final_route(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log.info("funnel_final_route=%s", route)
 
 
-appbot.add_handler(CommandHandler("start", start))
+appbot.add_handler(CommandHandler("start", start, block=False))
 appbot.add_handler(CommandHandler("stepgif", stepgif))
 appbot.add_handler(CommandHandler("fileid", fileid))
 appbot.add_handler(CommandHandler("algimage", algimage))
