@@ -7,6 +7,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from telegram.error import TelegramError
 from content import STEPS, INTRO, CASES, OFFER, COURSE_URL, VIDEO_CAPTION
+from video_source import get_original_video, VIDEO_SOURCE_URL
 
 logging.basicConfig(level=logging.INFO)
 # httpx logs request URLs; Telegram Bot API URLs contain the bot token.
@@ -19,6 +20,7 @@ WEBHOOK_BASE_URL = (os.getenv("WEBHOOK_BASE_URL") or "https://" + os.environ["RE
 WEBHOOK_SECRET = os.environ["WEBHOOK_SECRET"]
 PATH = "/telegram/webhook"
 appbot = Application.builder().token(TOKEN).updater(None).build()
+cached_video_file_id = os.getenv("VIDEO_FILE_ID", "").strip()
 
 def keyboard(index: int):
     if index == -1:
@@ -104,44 +106,61 @@ async def fileid(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    video_ready = bool(os.getenv("VIDEO_FILE_ID", "").strip())
-    video_text = "✅ привязано" if video_ready else "⏳ ожидает привязки"
+    source = "Telegram file_id" if cached_video_file_id else "GitHub Releases"
     await update.message.reply_text(
-        "🛠 Ferixdi Bot v2.2\n"
+        "🛠 Ferixdi Bot v2.3\n"
         "14 мифов и кнопки активны.\n"
-        f"Финальное видео: {video_text}."
+        f"Видео: источник {source}."
     )
+
+
+async def deliver_original_video(source_message):
+    """Send the unchanged MP4 document, keeping the webhook response fast."""
+    global cached_video_file_id
+    markup = InlineKeyboardMarkup([[
+        InlineKeyboardButton("🚀 Посмотреть программу обучения", url=COURSE_URL)
+    ]])
+    try:
+        if cached_video_file_id:
+            result = await appbot.bot.send_document(
+                chat_id=source_message.chat_id,
+                document=cached_video_file_id,
+                caption=VIDEO_CAPTION,
+                reply_markup=markup,
+                read_timeout=180,
+                write_timeout=180,
+            )
+        else:
+            video_path = await get_original_video()
+            with video_path.open("rb") as video:
+                result = await appbot.bot.send_document(
+                    chat_id=source_message.chat_id,
+                    document=video,
+                    filename="ferixdi-process.mp4",
+                    caption=VIDEO_CAPTION,
+                    reply_markup=markup,
+                    read_timeout=180,
+                    write_timeout=180,
+                    connect_timeout=30,
+                )
+            if result.document:
+                cached_video_file_id = result.document.file_id
+        try:
+            await source_message.edit_reply_markup(reply_markup=None)
+        except TelegramError:
+            pass
+        log.info("final_original_video_sent")
+    except Exception as exc:
+        log.warning("Original video delivery failed: %s", type(exc).__name__)
+        await source_message.reply_text(
+            "🎬 Видео сейчас готовится к выдаче. Загляни чуть позже."
+        )
 
 
 async def final_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
-    file_id = os.getenv("VIDEO_FILE_ID", "").strip()
-    if not file_id:
-        await query.message.reply_text("🎬 Скоро здесь появится исходный MP4. Загляни позже.")
-        return
-
-    try:
-        await context.bot.send_document(
-            chat_id=query.message.chat_id,
-            document=file_id,
-            caption=VIDEO_CAPTION,
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("🚀 Посмотреть программу обучения", url=COURSE_URL)
-            ]]),
-            read_timeout=90,
-            write_timeout=90,
-        )
-    except TelegramError as exc:
-        log.error("Final original file delivery failed: %s", type(exc).__name__)
-        await query.message.reply_text("🎬 Пока возникла заминка с отправкой файла. Попробуй чуть позже.")
-        return
-
-    try:
-        await query.edit_message_reply_markup(reply_markup=None)
-    except TelegramError:
-        pass
-    log.info("final_original_video_sent")
+    await query.answer("🎬 Готовлю оригинальный MP4...")
+    appbot.create_task(deliver_original_video(query.message))
 
 
 appbot.add_handler(CommandHandler("start", start))
@@ -164,7 +183,7 @@ async def lifespan(app):
     try:
         yield
     finally:
-        await appbot.bot.delete_webhook()
+        # Leave the webhook configured during a rolling Render deployment.
         await appbot.stop()
         await appbot.shutdown()
 
