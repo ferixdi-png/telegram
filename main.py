@@ -36,7 +36,7 @@ def keyboard(index: int):
             InlineKeyboardButton("🎬 Получить оригинальное видео", callback_data="final_video")
         ]])
     else:
-        return InlineKeyboardMarkup([[InlineKeyboardButton("🚀 Посмотреть программу", url=COURSE_URL)]])
+        return InlineKeyboardMarkup([[InlineKeyboardButton("📊 Реальные кейсы с нуля", url=COURSE_URL)]])
     return InlineKeyboardMarkup([[InlineKeyboardButton(label, callback_data=f"next:{index+1}")]])
 
 def page(index: int):
@@ -118,7 +118,7 @@ async def deliver_original_video(source_message):
     """Send the unchanged MP4 document, keeping the webhook response fast."""
     global cached_video_file_id
     markup = InlineKeyboardMarkup([[
-        InlineKeyboardButton("🚀 Посмотреть программу обучения", url=COURSE_URL)
+        InlineKeyboardButton("📊 Смотреть реальные кейсы с нуля", url=COURSE_URL)
     ]])
     try:
         if cached_video_file_id:
