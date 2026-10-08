@@ -4,7 +4,7 @@ import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from telegram.error import TelegramError
 from content import STEPS, INTRO, CASES, OFFER, COURSE_URL, VIDEO_CAPTION
 
@@ -67,24 +67,49 @@ async def next_step(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.message.reply_text(page(index), reply_markup=keyboard(index), disable_web_page_preview=True)
     log.info("funnel_step=%s", index)
 
+def id_message(file_id: str) -> str:
+    return (
+        "✅ Видео получил! Telegram сохранил оригинальный файл.\n\n"
+        "Теперь Render → Environment:\n"
+        "KEY: VIDEO_FILE_ID\n"
+        f"VALUE: {file_id}\n\n"
+        "Добавь переменную, сохрани и дождись статуса Live. "
+        "Последняя кнопка воронки начнёт выдавать этот MP4."
+    )
+
+
+async def receive_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    document = update.message.document
+    if not document:
+        return
+    if not (document.file_name or "").lower().endswith(".mp4"):
+        await update.message.reply_text("🎬 Для финального этапа пришли MP4 как файл.")
+        return
+    context.chat_data["last_mp4_file_id"] = document.file_id
+    await update.message.reply_text(id_message(document.file_id))
+
+
 async def fileid(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Get the reusable Telegram file_id without downloading or altering the file."""
     msg = update.message
     original = msg.reply_to_message if msg else None
-    if not original or not original.document:
+    file_id = original.document.file_id if original and original.document else None
+    file_id = file_id or context.chat_data.get("last_mp4_file_id")
+    if file_id:
+        await msg.reply_text(id_message(file_id))
+    else:
         await msg.reply_text(
-            "🎬 Пришли исходный MP4 в этот чат именно как ФАЙЛ "
-            "(без сжатия). Затем ответь на сообщение с файлом командой /fileid."
+            "🎬 Пришли исходный MP4 как файл. "
+            "Бот сразу ответит с VIDEO_FILE_ID для Render."
         )
-        return
-    document = original.document
-    await msg.reply_text(
-        "✅ Файл сохранён на стороне Telegram без перекодирования.\n\n"
-        "Добавь в Render → Environment:\n"
-        "KEY: VIDEO_FILE_ID\n"
-        f"VALUE: {document.file_id}\n\n"
-        "Сохрани и дождись перезапуска сервиса. "
-        "После этого последний шаг воронки будет отправлять исходный MP4."
+
+
+async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    video_ready = bool(os.getenv("VIDEO_FILE_ID", "").strip())
+    video_text = "✅ привязано" if video_ready else "⏳ ожидает привязки"
+    await update.message.reply_text(
+        "🛠 Ferixdi Bot v2.2\n"
+        "14 мифов и кнопки активны.\n"
+        f"Финальное видео: {video_text}."
     )
 
 
@@ -93,7 +118,7 @@ async def final_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     file_id = os.getenv("VIDEO_FILE_ID", "").strip()
     if not file_id:
-        await query.message.reply_text("🎬 Видео скоро появится здесь. Загляни немного позже.")
+        await query.message.reply_text("🎬 Скоро здесь появится исходный MP4. Загляни позже.")
         return
 
     try:
@@ -109,7 +134,7 @@ async def final_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     except TelegramError as exc:
         log.error("Final original file delivery failed: %s", type(exc).__name__)
-        await query.message.reply_text("Видео временно недоступно. Попробуй ещё раз позже.")
+        await query.message.reply_text("🎬 Пока возникла заминка с отправкой файла. Попробуй чуть позже.")
         return
 
     try:
@@ -121,6 +146,8 @@ async def final_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 appbot.add_handler(CommandHandler("start", start))
 appbot.add_handler(CommandHandler("fileid", fileid))
+appbot.add_handler(CommandHandler("status", status))
+appbot.add_handler(MessageHandler(filters.Document.ALL, receive_document))
 appbot.add_handler(CallbackQueryHandler(next_step, pattern=r"^next:\d+$"))
 appbot.add_handler(CallbackQueryHandler(final_video, pattern=r"^final_video$"))
 
