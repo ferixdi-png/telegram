@@ -12,7 +12,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Mess
 from telegram.error import TelegramError, BadRequest
 from content import (
     STEPS, INTRO, SHOWCASE, CASES, CASES_URL, VIDEO_CAPTION,
-    FINAL_MENU, DOUBTS_TEXT, JOIN_TEXT, STUDENT_TEXT, BUDGET_TEXT, MARKET_TEXT, ZERO_TEXT, EASY_TEXT, SKILLED_TEXT, LATER_TEXT, CONTACT_URL,
+    FINAL_MENU, DOUBTS_TEXT, JOIN_TEXT, STUDENT_TEXT, BUDGET_TEXT, MARKET_TEXT, ALGORITHM_TEXT, ZERO_TEXT, EASY_TEXT, SKILLED_TEXT, LATER_TEXT, CONTACT_URL,
 )
 from video_source import get_original_video, VIDEO_SOURCE_URL
 
@@ -29,6 +29,9 @@ PATH = "/telegram/webhook"
 appbot = Application.builder().token(TOKEN).updater(None).build()
 cached_video_file_id = os.getenv("VIDEO_FILE_ID", "").strip()
 MAX_EXAMPLE_PHOTOS = 11
+# Set to Telegram photo/document ID after /algimage; never reuse VIDEO_FILE_ID.
+ALGORITHM_PHOTO_FILE_ID = os.getenv("ALGORITHM_PHOTO_FILE_ID", "").strip()
+
 
 # Verified likes on the 11 screenshot originals, matched to the Telegram IDs
 # given for this gallery. Keep only fingerprints in public source code.
@@ -231,6 +234,7 @@ def route_keyboard(route: str):
             [InlineKeyboardButton("💸 Для меня пока дорого", callback_data="route:budget")],
             [InlineKeyboardButton("🤖 AI-рынок перегрет?", callback_data="route:market")],
             [InlineKeyboardButton("🚀 Сейчас с нуля реально?", callback_data="route:zero")],
+            [InlineKeyboardButton("🧠 Почему Instagram требует большего?", callback_data="route:algorithm")],
             [InlineKeyboardButton("⏳ Вернусь потом", callback_data="route:later")],
             [InlineKeyboardButton("↩️ Назад", callback_data="route:menu")],
         ])
@@ -241,6 +245,12 @@ def route_keyboard(route: str):
             [InlineKeyboardButton("📊 Глянуть программу", url=CASES_URL)],
             [InlineKeyboardButton("💬 Написать @ferixdiii", url=CONTACT_URL)],
             [InlineKeyboardButton("↩️ Назад", callback_data=f"route:{back_to}")],
+        ])
+
+    if route == "algorithm":
+        return InlineKeyboardMarkup([
+            [InlineKeyboardButton("📊 Посмотреть открытые кейсы", url=CASES_URL)],
+            [InlineKeyboardButton("↩️ К вопросам", callback_data="route:doubts")],
         ])
 
     if route == "skilled":
