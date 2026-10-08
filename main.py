@@ -521,37 +521,40 @@ async def send_lesson(source_message, index: int):
     )
 
 
-async def stepgif(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Create a reusable animation ID by replying /stepgif 1 to 10 to an uploaded clip."""
-    usage = (
-        "🎬 Пришли короткий MP4 без звука (или GIF) в этот чат. "
-        "Затем ответь на него командой /stepgif 1 для первого разбора, "
-        "/stepgif 2 для второго и так до 10."
+def stepgif_caption_number(message):
+    """Recognize /stepgif N typed as a Telegram media caption."""
+    tokens = (message.caption or "").strip().split()
+    if len(tokens) == 2 and tokens[0].split("@", 1)[0].lower() == "/stepgif" and tokens[1].isdigit():
+        return int(tokens[1])
+    return None
+
+
+async def prepare_stepgif(message, number: int, media_message):
+    """Return a Telegram animation file ID from GIF, video or MP4 document."""
+    help_text = (
+        "🎬 Отправь видео, GIF или MP4-файл с подписью /stepgif 5 "
+        "(где 5 — нужный номер от 1 до 10). "
+        "Можно также ответить текстом /stepgif 5 на уже отправленный файл."
     )
-    if not context.args or not context.args[0].isdigit():
-        await update.message.reply_text(usage)
-        return
-    number = int(context.args[0])
-    quoted = update.message.reply_to_message
-    if number < 1 or number > len(STEPS) or quoted is None:
-        await update.message.reply_text(usage)
+    if not 1 <= number <= len(STEPS) or media_message is None:
+        await message.reply_text(help_text)
         return
 
-    animation = quoted.animation
+    animation = media_message.animation
     if animation:
         file_id = animation.file_id
     else:
-        media = quoted.video or quoted.document
+        media = media_message.video or media_message.document
         if media is None or (
-            quoted.document and not (
-                (quoted.document.file_name or "").lower().endswith((".mp4", ".gif"))
-                or quoted.document.mime_type in ("video/mp4", "image/gif")
+            media_message.document and not (
+                (media_message.document.file_name or "").lower().endswith((".mp4", ".gif"))
+                or media_message.document.mime_type in ("video/mp4", "image/gif")
             )
         ):
-            await update.message.reply_text("🎬 Ответь на сообщение с MP4 или GIF.\n\n" + usage)
+            await message.reply_text("🎬 В сообщении нет подходящего MP4 или GIF.\n\n" + help_text)
             return
         if media.file_size and media.file_size > 15_000_000:
-            await update.message.reply_text("🎬 Файл больше 15 МБ. Сожми анимацию и пришли снова.")
+            await message.reply_text("🎬 Файл больше 15 МБ. Сожми анимацию и отправь снова.")
             return
 
         try:
@@ -559,39 +562,65 @@ async def stepgif(update: Update, context: ContextTypes.DEFAULT_TYPE):
             original_bytes = await telegram_file.download_as_bytearray()
             source_bytes = io.BytesIO(original_bytes)
             source_bytes.seek(0)
+            extension = (
+                ".gif"
+                if media_message.document and (media_message.document.file_name or "").lower().endswith(".gif")
+                else ".mp4"
+            )
             preview = await appbot.bot.send_animation(
-                chat_id=update.message.chat_id,
-                animation=InputFile(
-                    source_bytes,
-                    filename=(
-                        f"ferixdi_step{number:02d}.gif"
-                        if quoted.document and (quoted.document.file_name or "").lower().endswith(".gif")
-                        else f"ferixdi_step{number:02d}.mp4"
-                    ),
-                ),
-                caption=f"🎬 Проверка анимации для разбора {number:02d}/10",
+                chat_id=message.chat_id,
+                animation=InputFile(source_bytes, filename=f"ferixdi_step{number:02d}{extension}"),
+                caption=f"🎬 Анимация для разбора {number:02d}/10",
                 read_timeout=180,
                 write_timeout=180,
             )
             if preview.animation is None:
-                raise ValueError("Telegram did not accept this as an animation")
+                raise ValueError("Telegram returned no animation")
             file_id = preview.animation.file_id
         except (TelegramError, ValueError, OSError) as exc:
             log.warning("step_animation_upload_failed step=%02d: %s", number, type(exc).__name__)
-            await update.message.reply_text(
-                "🎬 Telegram пока отказывается принимать клип как GIF. "
-                "Убери звуковую дорожку из MP4 и пришли ещё раз."
+            await message.reply_text(
+                "🎬 Telegram пока не смог обработать MP4 как GIF. "
+                "Убери звуковую дорожку, сожми до 15 МБ и повтори."
             )
             return
 
-    key = f"STEP_ANIMATION_{number:02d}"
-    await update.message.reply_text(
-        f"✅ Анимация для разбора {number:02d}/10 готова!\n\n"
-        "Добавь в Render → Environment:\n"
-        f"KEY: {key}\nVALUE: {file_id}\n\n"
-        "Сохрани и дождись Live. "
-        "В боте анимация будет над полным текстом, с кнопкой следующего шага."
+    await message.reply_text(
+        f"✅ GIF для разбора {number:02d}/10 подготовлена!\n\n"
+        f"Telegram ID:\n{file_id}\n\n"
+        "Пришли этот ID мне в ChatGPT с номером разбора, "
+        "я привяжу GIF к шагу в GitHub без изменений в Render. "
+        "Сейчас это подготовленный ID, а не автоматическая установка."
     )
+
+
+async def stepgif(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Support a separate /stepgif N reply to a previously uploaded video."""
+    if not context.args or not context.args[0].isdigit():
+        await update.message.reply_text(
+            "🎬 Отправь MP4 или GIF с подписью /stepgif 5, "
+            "либо ответь на сообщение с видео командой /stepgif 5. "
+            "Номер разбора от 1 до 10."
+        )
+        return
+    await prepare_stepgif(
+        update.message,
+        int(context.args[0]),
+        update.message.reply_to_message,
+    )
+
+
+async def receive_video_or_animation(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Accept /stepgif N directly under the uploaded video/Telegram animation."""
+    message = update.message
+    number = stepgif_caption_number(message)
+    if number is not None:
+        await prepare_stepgif(message, number, message)
+    else:
+        await message.reply_text(
+            "🎬 Видео получил! Для привязки GIF отправь его с подписью "
+            "/stepgif 5 или ответь на это видео отдельной командой /stepgif 5."
+        )
 
 
 async def next_step(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -630,6 +659,10 @@ def id_message(file_id: str) -> str:
 
 
 async def receive_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    number = stepgif_caption_number(update.message)
+    if number is not None:
+        await prepare_stepgif(update.message, number, update.message)
+        return
     document = update.message.document
     if not document:
         return
@@ -685,7 +718,7 @@ async def bot_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     source = "Telegram file_id" if cached_video_file_id else "GitHub Releases (проверь, прикреплён ли MP4)"
     await update.message.reply_text(
-        "🛠 Ferixdi Bot v4.4\n"
+        "🛠 Ferixdi Bot v4.5\n"
         "16 мифов в 10 разборах. Кнопки активны.\n"
         f"Видео: источник {source}.\n"
         f"Примеры: {len(example_photo_ids)} фото" + (" (по лайкам).\n" if photo_gallery_sorted else ".\n")
@@ -809,6 +842,7 @@ appbot.add_handler(CommandHandler("link", bot_link))
 appbot.add_handler(CommandHandler("galleryids", galleryids))
 appbot.add_handler(CommandHandler("galleryclear", galleryclear))
 appbot.add_handler(MessageHandler(filters.PHOTO, receive_photo))
+appbot.add_handler(MessageHandler(filters.VIDEO | filters.ANIMATION, receive_video_or_animation))
 appbot.add_handler(MessageHandler(filters.Document.ALL, receive_document))
 appbot.add_handler(CallbackQueryHandler(next_step, pattern=r"^next:\d+$"))
 appbot.add_handler(CallbackQueryHandler(show_examples, pattern=r"^show_examples$"))
