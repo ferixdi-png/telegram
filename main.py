@@ -30,7 +30,8 @@ appbot = Application.builder().token(TOKEN).updater(None).build()
 cached_video_file_id = os.getenv("VIDEO_FILE_ID", "").strip()
 MAX_EXAMPLE_PHOTOS = 11
 # Set to Telegram photo/document ID after /algimage; never reuse VIDEO_FILE_ID.
-ALGORITHM_PHOTO_FILE_ID = os.getenv("ALGORITHM_PHOTO_FILE_ID", "").strip()
+DEFAULT_ALGORITHM_PHOTO_FILE_ID = ""  # Set after author supplies /algimage ID.
+ALGORITHM_PHOTO_FILE_ID = (os.getenv("ALGORITHM_PHOTO_FILE_ID") or DEFAULT_ALGORITHM_PHOTO_FILE_ID).strip()
 
 
 # Verified likes on the 11 screenshot originals, matched to the Telegram IDs
@@ -458,9 +459,9 @@ async def send_algorithm_image_id(message, photo_message):
         return
     file_id = photo_message.photo[-1].file_id
     await message.reply_text(
-        "✅ Картинка для блока об алгоритмах получена!\\n\\n"
-        "KEY: ALGORITHM_PHOTO_FILE_ID\\n"
-        f"VALUE: {file_id}\\n\\n"
+        "✅ Картинка для блока об алгоритмах получена!\n\n"
+        "KEY: ALGORITHM_PHOTO_FILE_ID\n"
+        f"VALUE: {file_id}\n\n"
         "Перешли мне этот ответ в ChatGPT, подключу изображение "
         "в GitHub без изменений в Render. Видео и GIF останутся прежними."
     )
@@ -1007,7 +1008,7 @@ async def bot_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     source = "Telegram file_id" if cached_video_file_id else "GitHub Releases (проверь, прикреплён ли MP4)"
     await update.message.reply_text(
-        "🛠 Ferixdi Bot v4.19\n"
+        "🛠 Ferixdi Bot v4.20\n"
         "16 мифов в 10 разборах. Кнопки активны.\n"
         f"Видео: источник {source}.\n"
         f"Примеры: {len(example_photo_ids)} фото.\n"
@@ -1119,14 +1120,49 @@ async def final_route(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "zero": ZERO_TEXT,
         "later": LATER_TEXT,
     }
+    if route == "algorithm":
+        buttons = route_keyboard("algorithm")
+        if ALGORITHM_PHOTO_FILE_ID:
+            try:
+                await appbot.bot.send_photo(
+                    chat_id=query.message.chat_id,
+                    photo=ALGORITHM_PHOTO_FILE_ID,
+                    caption=ALGORITHM_TEXT,
+                    parse_mode="HTML",
+                    reply_markup=buttons,
+                    read_timeout=120,
+                    write_timeout=120,
+                )
+                log.info("funnel_algorithm_photo_sent")
+                return
+            except TelegramError as exc:
+                log.warning("Algorithm Q&A image failed: %s", type(exc).__name__)
+        await query.message.reply_text(
+            ALGORITHM_TEXT,
+            reply_markup=buttons,
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+        )
+        log.info("funnel_algorithm_text_fallback")
+        return
+
     if route not in copy:
         return
-    await query.edit_message_text(
-        copy[route],
-        reply_markup=route_keyboard(route),
-        parse_mode="HTML",
-        disable_web_page_preview=True,
-    )
+    # A photo caption cannot be edited into a text-only question menu.
+    if query.message.photo or query.message.animation or query.message.document:
+        await query.message.reply_text(
+            copy[route],
+            reply_markup=route_keyboard(route),
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+        )
+    else:
+        await query.edit_message_text(
+            copy[route],
+            reply_markup=route_keyboard(route),
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+        )
     log.info("funnel_final_route=%s", route)
 
 
@@ -1147,7 +1183,7 @@ appbot.add_handler(CallbackQueryHandler(show_examples, pattern=r"^show_examples$
 appbot.add_handler(CallbackQueryHandler(more_examples, pattern=r"^more_examples$"))
 appbot.add_handler(CallbackQueryHandler(final_video, pattern=r"^final_video$"))
 appbot.add_handler(CallbackQueryHandler(video_finished, pattern=r"^video_finished$"))
-appbot.add_handler(CallbackQueryHandler(final_route, pattern=r"^route:(menu|doubts|join|student|budget|market|zero|easy|skilled|later)$"))
+appbot.add_handler(CallbackQueryHandler(final_route, pattern=r"^route:(menu|doubts|join|student|budget|market|algorithm|zero|easy|skilled|later)$"))
 
 @asynccontextmanager
 async def lifespan(app):
