@@ -420,7 +420,7 @@ async def bot_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     source = "Telegram file_id" if cached_video_file_id else "GitHub Releases"
     await update.message.reply_text(
-        "🛠 Ferixdi Bot v3.8\n"
+        "🛠 Ferixdi Bot v3.9\n"
         "16 мифов в 10 разборах. Кнопки активны.\n"
         f"Видео: источник {source}.\n"
         f"Примеры: {len(example_photo_ids)} фото" + (" (по лайкам)." if photo_gallery_sorted else ".")
@@ -432,7 +432,7 @@ async def deliver_original_video(source_message):
     global cached_video_file_id
     markup = InlineKeyboardMarkup([
         [InlineKeyboardButton("📊 Глянуть кейсы на сайте", url=CASES_URL)],
-        [InlineKeyboardButton("🏁 А что дальше?", callback_data="video_finished")],
+        [InlineKeyboardButton("🧩 А где узнать конкретные шаги?", callback_data="video_finished")],
     ])
     try:
         if cached_video_file_id:
