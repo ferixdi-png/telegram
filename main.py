@@ -87,16 +87,17 @@ step_animation_ids = {
     if (file_id := os.getenv(f"STEP_ANIMATION_{index:02d}", "").strip())
 }
 
-# First lesson's MP4 was sent to this bot as a Telegram document.
-# Telegram document IDs cannot directly be passed as animation IDs.
-# On the first lesson request we re-upload it via send_animation and cache
-# the resulting animation file_id for subsequent users of this process.
-# STEP_ANIMATION_01 (a true animation ID) always takes priority if configured.
-FIRST_STEP_MP4_DOCUMENT_ID = (
-    "BQACAgIAAxkBAAO7asdXn8721DAThL8eSkEjnHtpOpMAAv6iAAJF4DhKVHOz1QP60cI9BA"
-)
-cached_first_step_animation_id = None
-first_step_animation_lock = asyncio.Lock()
+# These files were sent to this bot as MP4 documents, not Telegram GIFs.
+# On first use, resend them as animations, cache the animation IDs in memory,
+# and keep the full lesson text as a caption with the existing navigation button.
+# STEP_ANIMATION_01..10 (actual animation IDs) override these document sources.
+STEP_MP4_DOCUMENT_IDS = {
+    1: "BQACAgIAAxkBAAO7asdXn8721DAThL8eSkEjnHtpOpMAAv6iAAJF4DhKVHOz1QP60cI9BA",
+    2: "BQACAgIAAxkBAAPXasdcAzlMa2n9cdZr6RZTzNxp_YgAAl2jAAJF4DhKXCGLrE7BuMk9BA",
+    3: "BQACAgIAAxkBAAPZasdcXTV7iaNB4Ezs1UpjOY1qUuIAAmKjAAJF4DhKVPHVZTAw-Qw9BA",
+}
+cached_step_animation_ids = {}
+step_animation_locks = {number: asyncio.Lock() for number in STEP_MP4_DOCUMENT_IDS}
 
 # Telegram document sent specifically for the welcome screen, not the final MP4.
 INTRO_MP4_DOCUMENT_ID = (
@@ -441,42 +442,12 @@ async def galleryclear(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def send_lesson(source_message, index: int):
-    """Send silent MP4/GIF with the complete lesson as its caption, or plain text."""
+    """Show a looping MP4/GIF, complete lesson caption, and the existing next button."""
+    number = index + 1
     caption = page(index)
     reply_markup = keyboard(index)
-    gif_id = step_animation_ids.get(index + 1)
-    global cached_first_step_animation_id
-    if index == 0 and not gif_id:
-        if cached_first_step_animation_id:
-            gif_id = cached_first_step_animation_id
-        else:
-            async with first_step_animation_lock:
-                if cached_first_step_animation_id:
-                    gif_id = cached_first_step_animation_id
-                else:
-                    try:
-                        original = await appbot.bot.get_file(FIRST_STEP_MP4_DOCUMENT_ID)
-                        mp4_bytes = await original.download_as_bytearray()
-                        mp4_data = io.BytesIO(mp4_bytes)
-                        mp4_data.seek(0)
-                        animation_message = await appbot.bot.send_animation(
-                            chat_id=source_message.chat_id,
-                            animation=InputFile(mp4_data, filename="ferixdi_step01.mp4"),
-                            caption=caption,
-                            parse_mode="HTML",
-                            reply_markup=reply_markup,
-                            read_timeout=180,
-                            write_timeout=180,
-                        )
-                        if animation_message.animation:
-                            cached_first_step_animation_id = animation_message.animation.file_id
-                        log.info("lesson_animation_reuploaded step=01")
-                        return
-                    except (TelegramError, OSError, ValueError) as exc:
-                        log.warning(
-                            "lesson_animation_document_conversion_failed step=01: %s",
-                            type(exc).__name__,
-                        )
+    gif_id = step_animation_ids.get(number) or cached_step_animation_ids.get(number)
+
     if gif_id:
         try:
             await appbot.bot.send_animation(
@@ -488,10 +459,59 @@ async def send_lesson(source_message, index: int):
                 read_timeout=180,
                 write_timeout=180,
             )
-            log.info("lesson_animation_sent step=%02d", index + 1)
+            log.info("lesson_animation_sent step=%02d", number)
             return
         except TelegramError as exc:
-            log.warning("lesson_animation_error step=%02d: %s", index + 1, type(exc).__name__)
+            log.warning("lesson_animation_id_failed step=%02d: %s", number, type(exc).__name__)
+
+    document_id = STEP_MP4_DOCUMENT_IDS.get(number)
+    if document_id:
+        async with step_animation_locks[number]:
+            cached_id = cached_step_animation_ids.get(number)
+            if cached_id and cached_id != gif_id:
+                try:
+                    await appbot.bot.send_animation(
+                        chat_id=source_message.chat_id,
+                        animation=cached_id,
+                        caption=caption,
+                        parse_mode="HTML",
+                        reply_markup=reply_markup,
+                        read_timeout=180,
+                        write_timeout=180,
+                    )
+                    return
+                except TelegramError as exc:
+                    log.warning(
+                        "lesson_cached_animation_failed step=%02d: %s",
+                        number, type(exc).__name__,
+                    )
+
+            if not cached_id or cached_id != gif_id:
+                try:
+                    source_file = await appbot.bot.get_file(document_id)
+                    mp4_bytes = await source_file.download_as_bytearray()
+                    mp4_data = io.BytesIO(mp4_bytes)
+                    mp4_data.seek(0)
+                    sent = await appbot.bot.send_animation(
+                        chat_id=source_message.chat_id,
+                        animation=InputFile(
+                            mp4_data, filename=f"ferixdi_step{number:02d}.mp4"
+                        ),
+                        caption=caption,
+                        parse_mode="HTML",
+                        reply_markup=reply_markup,
+                        read_timeout=180,
+                        write_timeout=180,
+                    )
+                    if sent.animation:
+                        cached_step_animation_ids[number] = sent.animation.file_id
+                    log.info("lesson_animation_converted step=%02d", number)
+                    return
+                except (TelegramError, OSError, ValueError) as exc:
+                    log.warning(
+                        "lesson_animation_conversion_failed step=%02d: %s",
+                        number, type(exc).__name__,
+                    )
 
     await source_message.reply_text(
         caption,
@@ -665,15 +685,14 @@ async def bot_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     source = "Telegram file_id" if cached_video_file_id else "GitHub Releases (проверь, прикреплён ли MP4)"
     await update.message.reply_text(
-        "🛠 Ferixdi Bot v4.3\n"
+        "🛠 Ferixdi Bot v4.4\n"
         "16 мифов в 10 разборах. Кнопки активны.\n"
         f"Видео: источник {source}.\n"
         f"Примеры: {len(example_photo_ids)} фото" + (" (по лайкам).\n" if photo_gallery_sorted else ".\n")
-        + f"GIF к разборам: {len(step_animation_ids) + int(1 not in step_animation_ids and bool(cached_first_step_animation_id))}/{len(STEPS)}.\n"
-        + ("Первый разбор: MP4 подключён, GIF создаётся при первом показе."
-           if 1 not in step_animation_ids and not cached_first_step_animation_id
-           else "Первый разбор: GIF готов." if 1 in step_animation_ids or cached_first_step_animation_id
-           else "Первый разбор: GIF отсутствует.")
+        + f"GIF к разборам: {len(set(step_animation_ids) | set(cached_step_animation_ids))}/{len(STEPS)}.\n"
+        + "MP4 для GIF: "
+        + ", ".join(f"{n:02d}/10" for n in sorted(STEP_MP4_DOCUMENT_IDS))
+        + " (автоподключение при первом показе)."
         + "\n"
         + ("Интро: GIF готов." if INTRO_ANIMATION_ID or cached_intro_animation_id
            else "Интро: MP4 подключён, GIF создаётся при первом /start.")
