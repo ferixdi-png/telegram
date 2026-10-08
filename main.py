@@ -251,13 +251,36 @@ def route_keyboard(route: str):
     ])
 
 
-def page(index: int):
+# Hand-drawn Telegram custom emoji letters from the owner's "Карандашик HD" pack.
+# All ten lessons share this label, both in GIF captions and the text-only fallback.
+CUSTOM_MYTH_EMOJI_IDS = (
+    "5264807616227357702",  # М
+    "5264908337505412642",  # И
+    "5264998149566539809",  # Ф
+)
+custom_myth_font_supported = True
+
+
+def myth_label(index: int, custom_font: bool = True) -> str:
+    if custom_font:
+        letters = "".join(
+            f'<tg-emoji emoji-id="{emoji_id}">✏️</tg-emoji>'
+            for emoji_id in CUSTOM_MYTH_EMOJI_IDS
+        )
+    else:
+        letters = "<b>МИФ</b>"
+    return f'{letters} <b>{index + 1:02d}/{len(STEPS)}</b>'
+
+
+def page(index: int, custom_font: bool | None = None):
     if index == -1:
         return INTRO
     if 0 <= index < len(STEPS):
+        if custom_font is None:
+            custom_font = custom_myth_font_supported
         step = STEPS[index]
         return (
-            f'🏁 <b>МИФ {index + 1:02d}/{len(STEPS)}</b>\n\n'
+            f'{myth_label(index, custom_font)}\n\n'
             f'<b>{escape(step["myth"])}</b>\n\n'
             f'{escape(step["answer"])}'
         )
