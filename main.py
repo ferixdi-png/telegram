@@ -595,6 +595,7 @@ async def send_myth_animation(source_message, index: int, animation):
 
 async def send_lesson(source_message, index: int):
     """Show a looping MP4/GIF, complete lesson caption, and the existing next button."""
+    global custom_myth_font_supported
     number = index + 1
     caption = page(index)
     reply_markup = keyboard(index)
@@ -960,7 +961,7 @@ async def bot_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     source = "Telegram file_id" if cached_video_file_id else "GitHub Releases (проверь, прикреплён ли MP4)"
     await update.message.reply_text(
-        "🛠 Ferixdi Bot v4.16\n"
+        "🛠 Ferixdi Bot v4.17\n"
         "16 мифов в 10 разборах. Кнопки активны.\n"
         f"Видео: источник {source}.\n"
         f"Примеры: {len(example_photo_ids)} фото.\n"
