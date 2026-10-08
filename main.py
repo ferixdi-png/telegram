@@ -590,8 +590,9 @@ async def send_lesson(source_message, index: int):
 
             if not cached_id or cached_id != gif_id:
                 try:
-                    source_file = await appbot.bot.get_file(document_id)
-                    mp4_bytes = await source_file.download_as_bytearray()
+                    mp4_bytes = await get_lesson_mp4(number)
+                    if mp4_bytes is None:
+                        raise ValueError("MP4 source unavailable")
                     mp4_data = io.BytesIO(mp4_bytes)
                     mp4_data.seek(0)
                     sent = await appbot.bot.send_animation(
