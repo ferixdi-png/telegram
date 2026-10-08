@@ -56,26 +56,54 @@ def photo_tag(file_id: str) -> str:
 
 
 def order_gallery_photos(ids: list[str]) -> tuple[list[str], bool]:
+    """Order recognized screenshots by verified likes, without an all-or-nothing match."""
     if not ids:
         return ids, False
 
+    # Original gallery mappings always win over external/manual values:
+    # EXAMPLE_PHOTO_LIKES can be stale or attached to the wrong photo order.
+    known_counts = [KNOWN_GALLERY_LIKES.get(photo_tag(file_id)) for file_id in ids]
+    manual_counts = None
     manual = os.getenv("EXAMPLE_PHOTO_LIKES", "").strip()
     if manual:
         try:
-            likes = [int(s.strip().replace(" ", "")) for s in manual.split(",")]
+            values = [int(s.strip().replace(" ", "")) for s in manual.split(",")]
+            if len(values) == len(ids) and all(value >= 0 for value in values):
+                manual_counts = values
+            else:
+                log.warning("Gallery likes override has incorrect count/negative values")
         except ValueError:
-            likes = []
-        if len(likes) == len(ids) and all(x >= 0 for x in likes):
-            return [photo for photo, count in sorted(
-                zip(ids, likes), key=lambda pair: pair[1], reverse=True
-            )], True
-        log.warning("EXAMPLE_PHOTO_LIKES must match EXAMPLE_PHOTO_IDS length")
+            log.warning("Gallery likes override has invalid values")
 
-    tags = [photo_tag(file_id) for file_id in ids]
-    if len(ids) == MAX_EXAMPLE_PHOTOS and all(tag in KNOWN_GALLERY_LIKES for tag in tags):
-        return sorted(ids, key=lambda file_id: KNOWN_GALLERY_LIKES[photo_tag(file_id)], reverse=True), True
+    counts = [
+        known if known is not None else (
+            manual_counts[index] if manual_counts is not None else None
+        )
+        for index, known in enumerate(known_counts)
+    ]
+    recognized = sum(value is not None for value in counts)
+    if not recognized:
+        log.warning("Gallery ranking unavailable: no matching screenshot IDs or valid counts")
+        return ids, False
 
-    return ids, False
+    # If one file ID has changed, continue sorting every recognized image.
+    # Unknowns go last in their original relative order; never invent a like count.
+    indexed = list(enumerate(ids))
+    indexed.sort(
+        key=lambda pair: (
+            counts[pair[0]] is not None,
+            counts[pair[0]] if counts[pair[0]] is not None else -1,
+        ),
+        reverse=True,
+    )
+    if recognized < len(ids):
+        log.warning(
+            "Gallery partially ranked: %s of %s images recognized",
+            recognized, len(ids),
+        )
+    else:
+        log.info("Gallery ranked: all %s images have verified/manual counts", recognized)
+    return [file_id for _, file_id in indexed], recognized == len(ids)
 
 
 # Each Reels lesson can have a silent looping MP4/GIF shown above the full text.
@@ -726,10 +754,10 @@ async def bot_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     source = "Telegram file_id" if cached_video_file_id else "GitHub Releases (проверь, прикреплён ли MP4)"
     await update.message.reply_text(
-        "🛠 Ferixdi Bot v4.12\n"
+        "🛠 Ferixdi Bot v4.13\n"
         "16 мифов в 10 разборах. Кнопки активны.\n"
         f"Видео: источник {source}.\n"
-        f"Примеры: {len(example_photo_ids)} фото" + (" (по лайкам).\n" if photo_gallery_sorted else ".\n")
+        f"Примеры: {len(example_photo_ids)} фото.\n"
         + f"GIF к разборам: {len(set(step_animation_ids) | set(cached_step_animation_ids))}/{len(STEPS)}.\n"
         + "MP4 для GIF: "
         + ", ".join(f"{n:02d}/10" for n in sorted(STEP_MP4_DOCUMENT_IDS))
