@@ -9,7 +9,7 @@ from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import RedirectResponse
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, InputFile, MessageEntity
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
-from telegram.error import TelegramError
+from telegram.error import TelegramError, BadRequest
 from content import (
     STEPS, INTRO, SHOWCASE, CASES, CASES_URL, VIDEO_CAPTION,
     FINAL_MENU, DOUBTS_TEXT, JOIN_TEXT, STUDENT_TEXT, BUDGET_TEXT, MARKET_TEXT, ZERO_TEXT, EASY_TEXT, SKILLED_TEXT, LATER_TEXT, CONTACT_URL,
@@ -561,6 +561,38 @@ async def get_lesson_mp4(number: int):
     return await load_step_mp4(number)
 
 
+def is_custom_font_error(exc: BadRequest) -> bool:
+    """Only fall back for unsupported Telegram custom-emoji entities."""
+    details = str(exc).lower()
+    return any(term in details for term in (
+        "customemoji", "custom emoji", "custom_emoji", "tg-emoji",
+        "can't parse entities", "parse entities",
+    ))
+
+
+async def send_myth_animation(source_message, index: int, animation):
+    """Prefer the custom-letter heading without risking the GIF if denied."""
+    global custom_myth_font_supported
+    kwargs = dict(
+        chat_id=source_message.chat_id,
+        animation=animation,
+        caption=page(index),
+        parse_mode="HTML",
+        reply_markup=keyboard(index),
+        read_timeout=180,
+        write_timeout=180,
+    )
+    try:
+        return await appbot.bot.send_animation(**kwargs)
+    except BadRequest as exc:
+        if not custom_myth_font_supported or not is_custom_font_error(exc):
+            raise
+        custom_myth_font_supported = False
+        log.warning("Custom MYTH font unavailable; preserving original GIF with normal header")
+        kwargs["caption"] = page(index, custom_font=False)
+        return await appbot.bot.send_animation(**kwargs)
+
+
 async def send_lesson(source_message, index: int):
     """Show a looping MP4/GIF, complete lesson caption, and the existing next button."""
     number = index + 1
@@ -570,15 +602,7 @@ async def send_lesson(source_message, index: int):
 
     if gif_id:
         try:
-            await appbot.bot.send_animation(
-                chat_id=source_message.chat_id,
-                animation=gif_id,
-                caption=caption,
-                parse_mode="HTML",
-                reply_markup=reply_markup,
-                read_timeout=180,
-                write_timeout=180,
-            )
+            await send_myth_animation(source_message, index, gif_id)
             log.info("lesson_animation_sent step=%02d", number)
             return
         except TelegramError as exc:
@@ -590,15 +614,7 @@ async def send_lesson(source_message, index: int):
             cached_id = cached_step_animation_ids.get(number)
             if cached_id and cached_id != gif_id:
                 try:
-                    await appbot.bot.send_animation(
-                        chat_id=source_message.chat_id,
-                        animation=cached_id,
-                        caption=caption,
-                        parse_mode="HTML",
-                        reply_markup=reply_markup,
-                        read_timeout=180,
-                        write_timeout=180,
-                    )
+                    await send_myth_animation(source_message, index, cached_id)
                     return
                 except TelegramError as exc:
                     log.warning(
@@ -613,16 +629,10 @@ async def send_lesson(source_message, index: int):
                         raise ValueError("MP4 source unavailable")
                     mp4_data = io.BytesIO(mp4_bytes)
                     mp4_data.seek(0)
-                    sent = await appbot.bot.send_animation(
-                        chat_id=source_message.chat_id,
-                        animation=InputFile(
-                            mp4_data, filename=f"ferixdi_step{number:02d}.mp4"
-                        ),
-                        caption=caption,
-                        parse_mode="HTML",
-                        reply_markup=reply_markup,
-                        read_timeout=180,
-                        write_timeout=180,
+                    sent = await send_myth_animation(
+                        source_message,
+                        index,
+                        InputFile(mp4_data, filename=f"ferixdi_step{number:02d}.mp4"),
                     )
                     if sent.animation:
                         cached_step_animation_ids[number] = sent.animation.file_id
@@ -634,12 +644,24 @@ async def send_lesson(source_message, index: int):
                         number, type(exc).__name__,
                     )
 
-    await source_message.reply_text(
-        caption,
-        reply_markup=reply_markup,
-        disable_web_page_preview=True,
-        parse_mode="HTML",
-    )
+    try:
+        await source_message.reply_text(
+            page(index),
+            reply_markup=reply_markup,
+            disable_web_page_preview=True,
+            parse_mode="HTML",
+        )
+    except BadRequest as exc:
+        if not custom_myth_font_supported or not is_custom_font_error(exc):
+            raise
+        custom_myth_font_supported = False
+        log.warning("Custom MYTH font unavailable for plain text; sending normal title")
+        await source_message.reply_text(
+            page(index, custom_font=False),
+            reply_markup=reply_markup,
+            disable_web_page_preview=True,
+            parse_mode="HTML",
+        )
 
 
 def stepgif_caption_number(message):
