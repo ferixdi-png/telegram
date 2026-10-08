@@ -7,7 +7,7 @@ from html import escape
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import RedirectResponse
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, InputFile
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, InputFile, MessageEntity
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from telegram.error import TelegramError
 from content import (
@@ -800,6 +800,93 @@ async def receive_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def emoji_font(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Read reusable custom letter emoji IDs from a replied-to Telegram message."""
+    message = update.message
+    if message is None:
+        return
+
+    source = message.reply_to_message
+    if source is None:
+        await message.reply_text(
+            "✏️ Ответь командой /emojifont МИФ на уже отправленное сообщение "
+            "с тремя кастомными буквами М И Ф. Тогда покажу их Telegram ID."
+        )
+        return
+
+    entities = source.entities or source.caption_entities or []
+    letters = [
+        entity.custom_emoji_id
+        for entity in entities
+        if entity.type == MessageEntity.CUSTOM_EMOJI and entity.custom_emoji_id
+    ]
+    if not letters:
+        await message.reply_text(
+            "🔎 В выбранном сообщении Telegram не передал кастомных эмодзи. "
+            "Пришли буквы именно как эмодзи из набора, а затем ответь "
+            "на них командой /emojifont МИФ. Скриншот для этого не подойдёт."
+        )
+        return
+    if len(letters) > 45:
+        await message.reply_text("✏️ За один раз можно прочитать до 45 букв.")
+        return
+
+    label = "".join(context.args).replace(" ", "").upper()
+    if not label and len(letters) == 3:
+        label = "МИФ"
+    if not label or len(label) != len(letters) or not label.isalpha():
+        await message.reply_text(
+            f"✏️ Нашёл {len(letters)} кастомных букв. "
+            "Ответь командой /emojifont МИФ, где слово после команды "
+            "перечисляет буквы в том же порядке, что и на картинке."
+        )
+        return
+
+    unique_ids = list(dict.fromkeys(letters))
+    descriptions = [f"{letter} = {emoji_id}" for letter, emoji_id in zip(label, letters)]
+    await message.reply_text(
+        f"✅ Кастомный шрифт: {label}\\n"
+        f"Найдено букв: {len(letters)}\\n\\n"
+        + "\\n".join(descriptions)
+        + "\\n\\nСкопируй этот ответ в ChatGPT. "
+        "По ID подключим шрифт к заголовкам бота, GIF останутся прежними."
+    )
+
+    # The fallback inside <tg-emoji> must match the associated sticker emoji.
+    # A custom font uses images of letters, but its underlying text is still an emoji.
+    try:
+        stickers = await context.bot.get_custom_emoji_stickers(unique_ids)
+        alt_by_id = {
+            sticker.custom_emoji_id: (sticker.emoji or "✏️")
+            for sticker in stickers
+            if sticker.custom_emoji_id
+        }
+        preview = " ".join(
+            f'<tg-emoji emoji-id="{emoji_id}">{escape(alt_by_id.get(emoji_id, "✏️"))}</tg-emoji>'
+            for emoji_id in letters
+        )
+        sent = await message.reply_text(
+            "🔎 Вот как бот отправляет этот шрифт: \\n" + preview,
+            parse_mode="HTML",
+        )
+        if not any(
+            entity.type == MessageEntity.CUSTOM_EMOJI
+            for entity in (sent.entities or [])
+        ):
+            await message.reply_text(
+                "⚠️ Telegram отправил обычные символы вместо кастомных эмодзи. "
+                "Для отображения в личных чатах у владельца бота обычно "
+                "нужна активная подписка Telegram Premium."
+            )
+    except TelegramError as exc:
+        log.warning("custom_emoji_preview_failed: %s", type(exc).__name__)
+        await message.reply_text(
+            "⚠️ ID получил, но Telegram пока отклонил тестовую отправку. "
+            "Проверь Telegram Premium на аккаунте владельца бота. "
+            "Сами ID из сообщения выше сохранились."
+        )
+
+
 async def fileid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
     original = msg.reply_to_message if msg else None
@@ -828,7 +915,7 @@ async def bot_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     source = "Telegram file_id" if cached_video_file_id else "GitHub Releases (проверь, прикреплён ли MP4)"
     await update.message.reply_text(
-        "🛠 Ferixdi Bot v4.15\n"
+        "🛠 Ferixdi Bot v4.16\n"
         "16 мифов в 10 разборах. Кнопки активны.\n"
         f"Видео: источник {source}.\n"
         f"Примеры: {len(example_photo_ids)} фото.\n"
@@ -954,6 +1041,7 @@ async def final_route(update: Update, context: ContextTypes.DEFAULT_TYPE):
 appbot.add_handler(CommandHandler("start", start))
 appbot.add_handler(CommandHandler("stepgif", stepgif))
 appbot.add_handler(CommandHandler("fileid", fileid))
+appbot.add_handler(CommandHandler("emojifont", emoji_font))
 appbot.add_handler(CommandHandler("status", status))
 appbot.add_handler(CommandHandler("link", bot_link))
 appbot.add_handler(CommandHandler("galleryids", galleryids))
