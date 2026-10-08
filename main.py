@@ -160,6 +160,9 @@ STEP_MP4_DOCUMENT_IDS = {
 }
 cached_step_animation_ids = {}
 step_animation_locks = {number: asyncio.Lock() for number in STEP_MP4_DOCUMENT_IDS}
+# Prefetch at most two upcoming MP4s while a reader is on the previous screen.
+# This reduces cold-first-view waits without keeping the entire video set in RAM.
+prefetched_step_tasks = {}
 
 # Telegram document sent specifically for the welcome screen, not the final MP4.
 INTRO_MP4_DOCUMENT_ID = (
