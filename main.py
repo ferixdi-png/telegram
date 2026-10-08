@@ -9,7 +9,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Mess
 from telegram.error import TelegramError
 from content import (
     STEPS, INTRO, SHOWCASE, CASES, VIDEO_HOOK, CASES_URL, VIDEO_CAPTION,
-    FINAL_MENU, JOIN_TEXT, STUDENT_TEXT, BUDGET_TEXT, MARKET_TEXT, ZERO_TEXT, LATER_TEXT, CONTACT_URL,
+    FINAL_MENU, DOUBTS_TEXT, JOIN_TEXT, STUDENT_TEXT, BUDGET_TEXT, MARKET_TEXT, ZERO_TEXT, LATER_TEXT, CONTACT_URL,
 )
 from video_source import get_original_video, VIDEO_SOURCE_URL
 
@@ -29,12 +29,18 @@ example_photo_ids = [v.strip() for v in os.getenv("EXAMPLE_PHOTO_IDS", "").split
 
 def keyboard(index: int):
     if index == -2:
-        return InlineKeyboardMarkup([[
-            InlineKeyboardButton("🏁 Теперь к 15 мифам", callback_data="next:0")
-        ]])
+        buttons = [[InlineKeyboardButton("🏁 Перейти к мифам", callback_data="next:0")]]
+        if len(example_photo_ids) > 5:
+            extra = len(example_photo_ids) - 5
+            buttons.append([InlineKeyboardButton(f"📸 Ещё {extra} примеров", callback_data="more_examples")])
+        return InlineKeyboardMarkup(buttons)
     if index == -1:
+        if example_photo_ids:
+            return InlineKeyboardMarkup([[
+                InlineKeyboardButton("🎬 Показать примеры", callback_data="show_examples")
+            ]])
         return InlineKeyboardMarkup([[
-            InlineKeyboardButton("🎬 Сначала покажи примеры", callback_data="show_examples")
+            InlineKeyboardButton("🏁 Поехали к мифам", callback_data="next:0")
         ]])
     elif index < len(STEPS) - 1:
         label = STEPS[index]["button"]
@@ -55,24 +61,31 @@ def keyboard(index: int):
 def route_keyboard(route: str):
     if route == "menu":
         return InlineKeyboardMarkup([
-            [InlineKeyboardButton("🎓 Хочу на обучение", callback_data="route:join")],
-            [InlineKeyboardButton("✅ Я уже на обучении", callback_data="route:student")],
+            [InlineKeyboardButton("🎓 Хочу разобраться глубже", callback_data="route:join")],
+            [InlineKeyboardButton("🤔 Есть сомнения", callback_data="route:doubts")],
+            [InlineKeyboardButton("✅ Я уже в группе", callback_data="route:student")],
+            [InlineKeyboardButton("📊 Посмотреть кейсы", url=CASES_URL)],
+        ])
+
+    if route == "doubts":
+        return InlineKeyboardMarkup([
             [InlineKeyboardButton("💸 Пока дороговато", callback_data="route:budget")],
             [InlineKeyboardButton("🤖 AI-рынок перегрет?", callback_data="route:market")],
-            [InlineKeyboardButton("🚀 С нуля сейчас сложно?", callback_data="route:zero")],
-            [InlineKeyboardButton("⏳ Вернусь к этому позже", callback_data="route:later")],
-            [InlineKeyboardButton("📊 Сайт и реальные кейсы", url=CASES_URL)],
+            [InlineKeyboardButton("🚀 С нуля уже поздно?", callback_data="route:zero")],
+            [InlineKeyboardButton("⏳ Вернусь позже", callback_data="route:later")],
+            [InlineKeyboardButton("↩️ Назад", callback_data="route:menu")],
         ])
 
     if route in ("join", "budget", "market", "zero"):
+        back_to = "menu" if route == "join" else "doubts"
         return InlineKeyboardMarkup([
-            [InlineKeyboardButton("📊 Программа и кейсы на сайте", url=CASES_URL)],
+            [InlineKeyboardButton("📊 Программа и кейсы", url=CASES_URL)],
             [InlineKeyboardButton("💬 Написать @ferixdiii", url=CONTACT_URL)],
-            [InlineKeyboardButton("↩️ К выбору", callback_data="route:menu")],
+            [InlineKeyboardButton("↩️ Назад", callback_data=f"route:{back_to}")],
         ])
 
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("↩️ К выбору", callback_data="route:menu")],
+        [InlineKeyboardButton("↩️ Назад", callback_data="route:menu")],
     ])
 
 
@@ -104,22 +117,17 @@ async def show_examples(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if example_photo_ids:
         try:
-            if len(example_photo_ids) == 1:
+            visible = example_photo_ids[:5]
+            if len(visible) == 1:
                 await appbot.bot.send_photo(
                     chat_id=query.message.chat_id,
-                    photo=example_photo_ids[0],
-                )
-            elif len(example_photo_ids) <= 10:
-                await appbot.bot.send_media_group(
-                    chat_id=query.message.chat_id,
-                    media=[InputMediaPhoto(media=photo_id) for photo_id in example_photo_ids],
+                    photo=visible[0],
                 )
             else:
-                for batch in (example_photo_ids[:6], example_photo_ids[6:]):
-                    await appbot.bot.send_media_group(
-                        chat_id=query.message.chat_id,
-                        media=[InputMediaPhoto(media=photo_id) for photo_id in batch],
-                    )
+                await appbot.bot.send_media_group(
+                    chat_id=query.message.chat_id,
+                    media=[InputMediaPhoto(media=photo_id) for photo_id in visible],
+                )
         except TelegramError as exc:
             log.warning("Could not send example photo gallery: %s", type(exc).__name__)
 
@@ -130,6 +138,38 @@ async def show_examples(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="HTML",
     )
     log.info("funnel_showcase")
+
+
+async def more_examples(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    remaining = example_photo_ids[5:]
+    if not remaining:
+        return
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except TelegramError:
+        pass
+    try:
+        if len(remaining) == 1:
+            await appbot.bot.send_photo(
+                chat_id=query.message.chat_id,
+                photo=remaining[0],
+            )
+        else:
+            await appbot.bot.send_media_group(
+                chat_id=query.message.chat_id,
+                media=[InputMediaPhoto(media=photo_id) for photo_id in remaining],
+            )
+    except TelegramError as exc:
+        log.warning("Could not send extra examples: %s", type(exc).__name__)
+    await query.message.reply_text(
+        "🏁 Примеры посмотрели — теперь к моим 15 проверкам.",
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("🔥 Первый миф", callback_data="next:0")
+        ]]),
+    )
+    log.info("funnel_more_examples")
 
 
 async def receive_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -219,7 +259,7 @@ async def fileid(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     source = "Telegram file_id" if cached_video_file_id else "GitHub Releases"
     await update.message.reply_text(
-        "🛠 Ferixdi Bot v2.8\n"
+        "🛠 Ferixdi Bot v2.9\n"
         "15 мифов и кнопки активны.\n"
         f"Видео: источник {source}.\n"
         f"Примеры: {len(example_photo_ids)} фото."
@@ -307,6 +347,7 @@ async def final_route(update: Update, context: ContextTypes.DEFAULT_TYPE):
     route = query.data.split(":", 1)[1]
     copy = {
         "menu": FINAL_MENU,
+        "doubts": DOUBTS_TEXT,
         "join": JOIN_TEXT,
         "student": STUDENT_TEXT,
         "budget": BUDGET_TEXT,
@@ -334,9 +375,10 @@ appbot.add_handler(MessageHandler(filters.PHOTO, receive_photo))
 appbot.add_handler(MessageHandler(filters.Document.ALL, receive_document))
 appbot.add_handler(CallbackQueryHandler(next_step, pattern=r"^next:\d+$"))
 appbot.add_handler(CallbackQueryHandler(show_examples, pattern=r"^show_examples$"))
+appbot.add_handler(CallbackQueryHandler(more_examples, pattern=r"^more_examples$"))
 appbot.add_handler(CallbackQueryHandler(final_video, pattern=r"^final_video$"))
 appbot.add_handler(CallbackQueryHandler(video_finished, pattern=r"^video_finished$"))
-appbot.add_handler(CallbackQueryHandler(final_route, pattern=r"^route:(menu|join|student|budget|market|zero|later)$"))
+appbot.add_handler(CallbackQueryHandler(final_route, pattern=r"^route:(menu|doubts|join|student|budget|market|zero|later)$"))
 
 @asynccontextmanager
 async def lifespan(app):
