@@ -98,6 +98,14 @@ FIRST_STEP_MP4_DOCUMENT_ID = (
 cached_first_step_animation_id = None
 first_step_animation_lock = asyncio.Lock()
 
+# Telegram document sent specifically for the welcome screen, not the final MP4.
+INTRO_MP4_DOCUMENT_ID = (
+    "BQACAgIAAxkBAAPIasdbCuZfneAEba80-kDPgCq06ZMAAkWjAAJF4DhKIg5vCsk91p49BA"
+)
+INTRO_ANIMATION_ID = os.getenv("INTRO_ANIMATION_ID", "").strip()
+cached_intro_animation_id = None
+intro_animation_lock = asyncio.Lock()
+
 raw_example_photo_ids = [
     v.strip() for v in os.getenv("EXAMPLE_PHOTO_IDS", "").split(",") if v.strip()
 ][:MAX_EXAMPLE_PHOTOS]
@@ -190,9 +198,77 @@ def page(index: int):
     return CASES
 
 
+async def send_intro(source_message):
+    """Show the introduction with an animation and the full HTML text as caption."""
+    global cached_intro_animation_id
+    caption = INTRO
+    reply_markup = keyboard(-1)
+    gif_id = INTRO_ANIMATION_ID or cached_intro_animation_id
+
+    if gif_id:
+        try:
+            await appbot.bot.send_animation(
+                chat_id=source_message.chat_id,
+                animation=gif_id,
+                caption=caption,
+                parse_mode="HTML",
+                reply_markup=reply_markup,
+                read_timeout=180,
+                write_timeout=180,
+            )
+            log.info("intro_animation_sent")
+            return
+        except TelegramError as exc:
+            log.warning("intro_animation_id_failed: %s", type(exc).__name__)
+
+    if not INTRO_ANIMATION_ID:
+        async with intro_animation_lock:
+            if cached_intro_animation_id:
+                try:
+                    await appbot.bot.send_animation(
+                        chat_id=source_message.chat_id,
+                        animation=cached_intro_animation_id,
+                        caption=caption,
+                        parse_mode="HTML",
+                        reply_markup=reply_markup,
+                        read_timeout=180,
+                        write_timeout=180,
+                    )
+                    return
+                except TelegramError as exc:
+                    log.warning("intro_cached_animation_failed: %s", type(exc).__name__)
+            try:
+                original = await appbot.bot.get_file(INTRO_MP4_DOCUMENT_ID)
+                content = await original.download_as_bytearray()
+                data = io.BytesIO(content)
+                data.seek(0)
+                sent = await appbot.bot.send_animation(
+                    chat_id=source_message.chat_id,
+                    animation=InputFile(data, filename="ferixdi_intro.mp4"),
+                    caption=caption,
+                    parse_mode="HTML",
+                    reply_markup=reply_markup,
+                    read_timeout=180,
+                    write_timeout=180,
+                )
+                if sent.animation:
+                    cached_intro_animation_id = sent.animation.file_id
+                log.info("intro_animation_converted")
+                return
+            except (TelegramError, OSError, ValueError) as exc:
+                log.warning("intro_animation_conversion_failed: %s", type(exc).__name__)
+
+    await source_message.reply_text(
+        caption,
+        reply_markup=reply_markup,
+        parse_mode="HTML",
+        disable_web_page_preview=True,
+    )
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message:
-        await update.message.reply_text(page(-1), reply_markup=keyboard(-1), disable_web_page_preview=True, parse_mode="HTML")
+        await send_intro(update.message)
 
 async def show_examples(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -524,12 +600,12 @@ async def next_step(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def id_message(file_id: str) -> str:
     return (
-        "✅ Видео получил! Telegram сохранил оригинальный файл.\n\n"
-        "Теперь Render → Environment:\n"
-        "KEY: VIDEO_FILE_ID\n"
-        f"VALUE: {file_id}\n\n"
-        "Добавь переменную, сохрани и дождись статуса Live. "
-        "Последняя кнопка воронки начнёт выдавать этот MP4."
+        "✅ MP4 получил! Вот Telegram ID файла:\n\n"
+        f"{file_id}\n\n"
+        "Если это GIF для приветствия или одного из 10 разборов, "
+        "пришли мне ID с названием блока. "
+        "Для финального исходного видео используй Render → Environment "
+        "с ключом VIDEO_FILE_ID. Не подменяй финальный файл заставкой."
     )
 
 
@@ -589,7 +665,7 @@ async def bot_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     source = "Telegram file_id" if cached_video_file_id else "GitHub Releases (проверь, прикреплён ли MP4)"
     await update.message.reply_text(
-        "🛠 Ferixdi Bot v4.2\n"
+        "🛠 Ferixdi Bot v4.3\n"
         "16 мифов в 10 разборах. Кнопки активны.\n"
         f"Видео: источник {source}.\n"
         f"Примеры: {len(example_photo_ids)} фото" + (" (по лайкам).\n" if photo_gallery_sorted else ".\n")
@@ -598,6 +674,9 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
            if 1 not in step_animation_ids and not cached_first_step_animation_id
            else "Первый разбор: GIF готов." if 1 in step_animation_ids or cached_first_step_animation_id
            else "Первый разбор: GIF отсутствует.")
+        + "\n"
+        + ("Интро: GIF готов." if INTRO_ANIMATION_ID or cached_intro_animation_id
+           else "Интро: MP4 подключён, GIF создаётся при первом /start.")
     )
 
 
