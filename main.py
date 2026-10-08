@@ -422,7 +422,14 @@ async def stepgif(update: Update, context: ContextTypes.DEFAULT_TYPE):
             source_bytes.seek(0)
             preview = await appbot.bot.send_animation(
                 chat_id=update.message.chat_id,
-                animation=InputFile(source_bytes, filename=f"ferixdi_step{number:02d}.mp4"),
+                animation=InputFile(
+                    source_bytes,
+                    filename=(
+                        f"ferixdi_step{number:02d}.gif"
+                        if quoted.document and (quoted.document.file_name or "").lower().endswith(".gif")
+                        else f"ferixdi_step{number:02d}.mp4"
+                    ),
+                ),
                 caption=f"🎬 Проверка анимации для разбора {number:02d}/10",
                 read_timeout=180,
                 write_timeout=180,
@@ -493,6 +500,13 @@ async def receive_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "image/png", "image/jpeg", "image/webp"
     ):
         await collect_gallery_item(update, context, "document", document)
+        return
+    if name.startswith("ferixdi_step") and name.endswith((".mp4", ".gif")):
+        await update.message.reply_text(
+            "🎬 Анимацию получил! Ответь на СВОЁ сообщение с этим файлом "
+            "командой /stepgif 1 (или номером нужного разбора от 1 до 10). "
+            "Сразу подготовлю ID для Render."
+        )
         return
     if name.endswith(".mp4") or mime == "video/mp4":
         context.chat_data["last_mp4_file_id"] = document.file_id
