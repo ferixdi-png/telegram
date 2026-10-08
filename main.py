@@ -6,11 +6,12 @@ import io
 from html import escape
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import RedirectResponse
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, InputFile
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from telegram.error import TelegramError
 from content import (
-    STEPS, INTRO, SHOWCASE, CASES, VIDEO_HOOK, CASES_URL, VIDEO_CAPTION,
+    STEPS, INTRO, SHOWCASE, CASES, CASES_URL, VIDEO_CAPTION,
     FINAL_MENU, DOUBTS_TEXT, JOIN_TEXT, STUDENT_TEXT, BUDGET_TEXT, MARKET_TEXT, ZERO_TEXT, EASY_TEXT, SKILLED_TEXT, LATER_TEXT, CONTACT_URL,
 )
 from video_source import get_original_video, VIDEO_SOURCE_URL
@@ -32,10 +33,12 @@ example_photo_ids = [v.strip() for v in os.getenv("EXAMPLE_PHOTO_IDS", "").split
 
 def keyboard(index: int):
     if index == -2:
-        buttons = [[InlineKeyboardButton("🏁 К первому мифу", callback_data="next:0")]]
+        buttons = [[InlineKeyboardButton("🏁 К разборам", callback_data="next:0")]]
         if len(example_photo_ids) > 5:
-            extra = len(example_photo_ids) - 5
-            buttons.append([InlineKeyboardButton(f"📸 Ещё {extra} примеров", callback_data="more_examples")])
+            buttons.append([InlineKeyboardButton(
+                f"📸 Ещё {len(example_photo_ids) - 5} примеров",
+                callback_data="more_examples",
+            )])
         return InlineKeyboardMarkup(buttons)
     if index == -1:
         if example_photo_ids:
@@ -43,23 +46,24 @@ def keyboard(index: int):
                 InlineKeyboardButton("🔥 Покажи, что залетало", callback_data="show_examples")
             ]])
         return InlineKeyboardMarkup([[
-            InlineKeyboardButton("🏁 Поехали к мифам", callback_data="next:0")
+            InlineKeyboardButton("🏁 Погнали к разборам", callback_data="next:0")
         ]])
-    elif index < len(STEPS) - 1:
-        label = STEPS[index]["button"]
-    elif index == len(STEPS) - 1:
-        label = "📊 Покажи свои реальные цифры"
-    elif index == len(STEPS):
-        label = "🎥 А как ты это делаешь?"
-    elif index == len(STEPS) + 1:
+    if 0 <= index < len(STEPS):
+        if index == len(STEPS) - 1:
+            label = "📊 Покажи реальные цифры"
+        else:
+            label = STEPS[index]["button"]
         return InlineKeyboardMarkup([[
-            InlineKeyboardButton("🎬 Забрать видео с разбором", callback_data="final_video")
+            InlineKeyboardButton(label, callback_data=f"next:{index + 1}")
         ]])
-    else:
+    if index == len(STEPS):
         return InlineKeyboardMarkup([[
-            InlineKeyboardButton("📊 Смотреть кейсы с нуля", url=CASES_URL)
+            InlineKeyboardButton("🎬 Покажи свой процесс", callback_data="final_video")
         ]])
-    return InlineKeyboardMarkup([[InlineKeyboardButton(label, callback_data=f"next:{index+1}")]])
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("📊 Кейсы на сайте", url=CASES_URL)
+    ]])
+
 
 def route_keyboard(route: str):
     if route == "menu":
@@ -102,19 +106,16 @@ def route_keyboard(route: str):
 
 def page(index: int):
     if index == -1:
-        if example_photo_ids:
-            return INTRO
-        return INTRO.replace("покажу живые примеры, ", "")
-    if index < len(STEPS):
+        return INTRO
+    if 0 <= index < len(STEPS):
         step = STEPS[index]
         return (
-            f'🏁 <b>МИФ {index+1:02d}/{len(STEPS)}</b>\n\n'
+            f'🏁 <b>РАЗБОР {index + 1:02d}/{len(STEPS)}</b>\n\n'
             f'<b>{escape(step["myth"])}</b>\n\n'
             f'{escape(step["answer"])}'
         )
-    if index == len(STEPS):
-        return CASES
-    return VIDEO_HOOK
+    return CASES
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message:
@@ -177,9 +178,9 @@ async def more_examples(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except TelegramError as exc:
         log.warning("Could not send extra examples: %s", type(exc).__name__)
     await query.message.reply_text(
-        "🏎 Вот такие сюжеты 😄 А теперь к 16 мифам.",
+        "🏎 Вот такие сюжеты 😄 А теперь к 10 коротким разборам.",
         reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("🔥 Первый миф", callback_data="next:0")
+            InlineKeyboardButton("🔥 Первый разбор", callback_data="next:0")
         ]]),
     )
     log.info("funnel_more_examples")
@@ -297,7 +298,7 @@ async def next_step(update: Update, context: ContextTypes.DEFAULT_TYPE):
         index = int(query.data.split(":", 1)[1])
     except (ValueError, IndexError):
         return
-    if not 0 <= index <= len(STEPS) + 1:
+    if not 0 <= index <= len(STEPS):
         return
     try:
         await query.edit_message_reply_markup(reply_markup=None)
@@ -355,8 +356,8 @@ async def fileid(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     source = "Telegram file_id" if cached_video_file_id else "GitHub Releases"
     await update.message.reply_text(
-        "🛠 Ferixdi Bot v3.3\n"
-        "16 мифов и кнопки активны.\n"
+        "🛠 Ferixdi Bot v3.4\n"
+        "16 мифов в 10 разборах. Кнопки активны.\n"
         f"Видео: источник {source}.\n"
         f"Примеры: {len(example_photo_ids)} фото."
     )
@@ -500,6 +501,17 @@ app = FastAPI(lifespan=lifespan)
 @app.get("/")
 async def health():
     return {"status": "ok", "bot": "Ferixdi AI Reels"}
+
+@app.get("/start")
+async def public_start_link():
+    """A stable public link that redirects to this bot's actual Telegram username."""
+    bot_info = await appbot.bot.get_me()
+    if not bot_info.username:
+        raise HTTPException(status_code=503, detail="Bot username unavailable")
+    return RedirectResponse(
+        url=f"https://t.me/{bot_info.username}?start=ferixdi",
+        status_code=302,
+    )
 
 @app.post(PATH)
 async def telegram_webhook(request: Request):
