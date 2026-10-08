@@ -33,24 +33,24 @@ example_photo_ids = [v.strip() for v in os.getenv("EXAMPLE_PHOTO_IDS", "").split
 
 def keyboard(index: int):
     if index == -2:
-        buttons = [[InlineKeyboardButton("🏁 К разборам", callback_data="next:0")]]
+        buttons = [[InlineKeyboardButton("🏁 Давай к мифам", callback_data="next:0")]]
         if len(example_photo_ids) > 5:
             buttons.append([InlineKeyboardButton(
-                f"📸 Ещё {len(example_photo_ids) - 5} примеров",
+                f"📸 Ещё {len(example_photo_ids) - 5} роликов",
                 callback_data="more_examples",
             )])
         return InlineKeyboardMarkup(buttons)
     if index == -1:
         if example_photo_ids:
             return InlineKeyboardMarkup([[
-                InlineKeyboardButton("🔥 Покажи, что залетало", callback_data="show_examples")
+                InlineKeyboardButton("🔥 А какие ролики залетали?", callback_data="show_examples")
             ]])
         return InlineKeyboardMarkup([[
-            InlineKeyboardButton("🏁 Погнали к разборам", callback_data="next:0")
+            InlineKeyboardButton("🏁 Поехали к мифам", callback_data="next:0")
         ]])
     if 0 <= index < len(STEPS):
         if index == len(STEPS) - 1:
-            label = "📊 Покажи реальные цифры"
+            label = "📊 Ладно, показывай цифры"
         else:
             label = STEPS[index]["button"]
         return InlineKeyboardMarkup([[
@@ -58,7 +58,7 @@ def keyboard(index: int):
         ]])
     if index == len(STEPS):
         return InlineKeyboardMarkup([[
-            InlineKeyboardButton("🎬 Покажи свой процесс", callback_data="final_video")
+            InlineKeyboardButton("🎬 Скидывай видео!", callback_data="final_video")
         ]])
     return InlineKeyboardMarkup([[
         InlineKeyboardButton("📊 Кейсы на сайте", url=CASES_URL)
@@ -68,34 +68,34 @@ def keyboard(index: int):
 def route_keyboard(route: str):
     if route == "menu":
         return InlineKeyboardMarkup([
-            [InlineKeyboardButton("🎓 Хочу разобраться глубже", callback_data="route:join")],
-            [InlineKeyboardButton("😎 Я и так умею", callback_data="route:skilled")],
-            [InlineKeyboardButton("🤔 Есть сомнения", callback_data="route:doubts")],
-            [InlineKeyboardButton("✅ Я уже в группе", callback_data="route:student")],
-            [InlineKeyboardButton("📊 Посмотреть кейсы", url=CASES_URL)],
+            [InlineKeyboardButton("🎓 Хочу научиться так же", callback_data="route:join")],
+            [InlineKeyboardButton("😎 Я уже умею, смотри", callback_data="route:skilled")],
+            [InlineKeyboardButton("🤔 Есть пара вопросов", callback_data="route:doubts")],
+            [InlineKeyboardButton("✅ Я уже с вами", callback_data="route:student")],
+            [InlineKeyboardButton("📊 Глянуть все кейсы", url=CASES_URL)],
         ])
 
     if route == "doubts":
         return InlineKeyboardMarkup([
-            [InlineKeyboardButton("🧩 Всё слишком сложно?", callback_data="route:easy")],
-            [InlineKeyboardButton("💸 Пока дороговато", callback_data="route:budget")],
+            [InlineKeyboardButton("🧩 Боюсь запутаться", callback_data="route:easy")],
+            [InlineKeyboardButton("💸 Для меня пока дорого", callback_data="route:budget")],
             [InlineKeyboardButton("🤖 AI-рынок перегрет?", callback_data="route:market")],
-            [InlineKeyboardButton("🚀 С нуля уже поздно?", callback_data="route:zero")],
-            [InlineKeyboardButton("⏳ Вернусь позже", callback_data="route:later")],
+            [InlineKeyboardButton("🚀 Сейчас с нуля реально?", callback_data="route:zero")],
+            [InlineKeyboardButton("⏳ Вернусь потом", callback_data="route:later")],
             [InlineKeyboardButton("↩️ Назад", callback_data="route:menu")],
         ])
 
     if route in ("join", "budget", "market", "zero", "easy"):
         back_to = "menu" if route == "join" else "doubts"
         return InlineKeyboardMarkup([
-            [InlineKeyboardButton("📊 Программа и кейсы", url=CASES_URL)],
+            [InlineKeyboardButton("📊 Глянуть программу", url=CASES_URL)],
             [InlineKeyboardButton("💬 Написать @ferixdiii", url=CONTACT_URL)],
             [InlineKeyboardButton("↩️ Назад", callback_data=f"route:{back_to}")],
         ])
 
     if route == "skilled":
         return InlineKeyboardMarkup([
-            [InlineKeyboardButton("🤝 Обсудить свой трафик", url=CONTACT_URL)],
+            [InlineKeyboardButton("🤝 Давай про трафик", url=CONTACT_URL)],
             [InlineKeyboardButton("↩️ Назад", callback_data="route:menu")],
         ])
 
@@ -178,9 +178,9 @@ async def more_examples(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except TelegramError as exc:
         log.warning("Could not send extra examples: %s", type(exc).__name__)
     await query.message.reply_text(
-        "🏎 Вот такие сюжеты 😄 А теперь к 10 коротким разборам.",
+        "🏎 Вот такие истории заходят 😄 А теперь покажу свои наблюдения.",
         reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("🔥 Первый разбор", callback_data="next:0")
+            InlineKeyboardButton("🔥 Давай первый миф", callback_data="next:0")
         ]]),
     )
     log.info("funnel_more_examples")
@@ -198,7 +198,7 @@ async def collect_gallery_item(update: Update, context: ContextTypes.DEFAULT_TYP
     context.chat_data.pop("gallery_ready_ids", None)
     if len(items) == MAX_EXAMPLE_PHOTOS:
         await update.message.reply_text(
-            "✅ Все 11 скриншотов на месте! Отправь /galleryids — подготовлю фотографии для галереи."
+            "✅ Все 11 скриншотов на месте! Отправь /galleryids, соберу фото для галереи."
         )
 
 
@@ -367,7 +367,7 @@ async def bot_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     source = "Telegram file_id" if cached_video_file_id else "GitHub Releases"
     await update.message.reply_text(
-        "🛠 Ferixdi Bot v3.4\n"
+        "🛠 Ferixdi Bot v3.5\n"
         "16 мифов в 10 разборах. Кнопки активны.\n"
         f"Видео: источник {source}.\n"
         f"Примеры: {len(example_photo_ids)} фото."
@@ -378,8 +378,8 @@ async def deliver_original_video(source_message):
     """Send the unchanged MP4 document, keeping the webhook response fast."""
     global cached_video_file_id
     markup = InlineKeyboardMarkup([
-        [InlineKeyboardButton("📊 Смотреть кейсы на сайте", url=CASES_URL)],
-        [InlineKeyboardButton("🏁 Посмотрел. Что дальше?", callback_data="video_finished")],
+        [InlineKeyboardButton("📊 Глянуть кейсы на сайте", url=CASES_URL)],
+        [InlineKeyboardButton("🏁 А что дальше?", callback_data="video_finished")],
     ])
     try:
         if cached_video_file_id:
@@ -422,7 +422,7 @@ async def deliver_original_video(source_message):
 
 async def final_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer("🎬 Готовлю оригинальный MP4...")
+    await query.answer("🎬 Сейчас скину исходник...")
     appbot.create_task(deliver_original_video(query.message))
 
 
@@ -434,7 +434,7 @@ async def video_finished(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         await query.edit_message_reply_markup(
             reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("📊 Смотреть кейсы на сайте", url=CASES_URL)
+                InlineKeyboardButton("📊 Глянуть кейсы на сайте", url=CASES_URL)
             ]])
         )
     except TelegramError:
