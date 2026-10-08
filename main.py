@@ -335,6 +335,7 @@ async def send_intro(source_message):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message:
         await send_intro(update.message)
+        prefetch_upcoming_step(1)
 
 async def show_examples(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
