@@ -7,7 +7,10 @@ from fastapi import FastAPI, Request, HTTPException
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from telegram.error import TelegramError
-from content import STEPS, INTRO, SHOWCASE, CASES, VIDEO_HOOK, CASES_URL, VIDEO_CAPTION
+from content import (
+    STEPS, INTRO, SHOWCASE, CASES, VIDEO_HOOK, CASES_URL, VIDEO_CAPTION,
+    FINAL_MENU, JOIN_TEXT, STUDENT_TEXT, BUDGET_TEXT, LATER_TEXT, CONTACT_URL,
+)
 from video_source import get_original_video, VIDEO_SOURCE_URL
 
 logging.basicConfig(level=logging.INFO)
@@ -27,7 +30,7 @@ example_photo_ids = [v.strip() for v in os.getenv("EXAMPLE_PHOTO_IDS", "").split
 def keyboard(index: int):
     if index == -2:
         return InlineKeyboardMarkup([[
-            InlineKeyboardButton("🏁 Теперь к 14 мифам", callback_data="next:0")
+            InlineKeyboardButton("🏁 Теперь к 15 мифам", callback_data="next:0")
         ]])
     if index == -1:
         return InlineKeyboardMarkup([[
@@ -48,6 +51,28 @@ def keyboard(index: int):
             InlineKeyboardButton("📊 Смотреть кейсы с нуля", url=CASES_URL)
         ]])
     return InlineKeyboardMarkup([[InlineKeyboardButton(label, callback_data=f"next:{index+1}")]])
+
+def route_keyboard(route: str):
+    if route == "menu":
+        return InlineKeyboardMarkup([
+            [InlineKeyboardButton("🎓 Хочу на обучение", callback_data="route:join")],
+            [InlineKeyboardButton("✅ Я уже на обучении", callback_data="route:student")],
+            [InlineKeyboardButton("💸 Пока дороговато", callback_data="route:budget")],
+            [InlineKeyboardButton("⏳ Вернусь к этому позже", callback_data="route:later")],
+            [InlineKeyboardButton("📊 Сайт и реальные кейсы", url=CASES_URL)],
+        ])
+
+    if route in ("join", "budget"):
+        return InlineKeyboardMarkup([
+            [InlineKeyboardButton("📊 Программа и кейсы на сайте", url=CASES_URL)],
+            [InlineKeyboardButton("💬 Написать @ferixdiii", url=CONTACT_URL)],
+            [InlineKeyboardButton("↩️ К выбору", callback_data="route:menu")],
+        ])
+
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("↩️ К выбору", callback_data="route:menu")],
+    ])
+
 
 def page(index: int):
     if index == -1:
@@ -192,8 +217,8 @@ async def fileid(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     source = "Telegram file_id" if cached_video_file_id else "GitHub Releases"
     await update.message.reply_text(
-        "🛠 Ferixdi Bot v2.5\n"
-        "14 мифов и кнопки активны.\n"
+        "🛠 Ferixdi Bot v2.6\n"
+        "15 мифов и кнопки активны.\n"
         f"Видео: источник {source}.\n"
         f"Примеры: {len(example_photo_ids)} фото."
     )
@@ -202,9 +227,10 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def deliver_original_video(source_message):
     """Send the unchanged MP4 document, keeping the webhook response fast."""
     global cached_video_file_id
-    markup = InlineKeyboardMarkup([[
-        InlineKeyboardButton("📊 Посмотреть реальные кейсы", url=CASES_URL)
-    ]])
+    markup = InlineKeyboardMarkup([
+        [InlineKeyboardButton("📊 Смотреть кейсы на сайте", url=CASES_URL)],
+        [InlineKeyboardButton("🏁 Видео посмотрел, что дальше?", callback_data="video_finished")],
+    ])
     try:
         if cached_video_file_id:
             result = await appbot.bot.send_document(
@@ -250,6 +276,51 @@ async def final_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     appbot.create_task(deliver_original_video(query.message))
 
 
+async def video_finished(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    # Keep the link to cases on the original MP4, but move the menu to a text message.
+    try:
+        await query.edit_message_reply_markup(
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("📊 Смотреть кейсы на сайте", url=CASES_URL)
+            ]])
+        )
+    except TelegramError:
+        pass
+
+    await query.message.reply_text(
+        FINAL_MENU,
+        reply_markup=route_keyboard("menu"),
+        parse_mode="HTML",
+        disable_web_page_preview=True,
+    )
+    log.info("funnel_final_menu_opened")
+
+
+async def final_route(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    route = query.data.split(":", 1)[1]
+    copy = {
+        "menu": FINAL_MENU,
+        "join": JOIN_TEXT,
+        "student": STUDENT_TEXT,
+        "budget": BUDGET_TEXT,
+        "later": LATER_TEXT,
+    }
+    if route not in copy:
+        return
+    await query.edit_message_text(
+        copy[route],
+        reply_markup=route_keyboard(route),
+        parse_mode="HTML",
+        disable_web_page_preview=True,
+    )
+    log.info("funnel_final_route=%s", route)
+
+
 appbot.add_handler(CommandHandler("start", start))
 appbot.add_handler(CommandHandler("fileid", fileid))
 appbot.add_handler(CommandHandler("status", status))
@@ -260,6 +331,8 @@ appbot.add_handler(MessageHandler(filters.Document.ALL, receive_document))
 appbot.add_handler(CallbackQueryHandler(next_step, pattern=r"^next:\d+$"))
 appbot.add_handler(CallbackQueryHandler(show_examples, pattern=r"^show_examples$"))
 appbot.add_handler(CallbackQueryHandler(final_video, pattern=r"^final_video$"))
+appbot.add_handler(CallbackQueryHandler(video_finished, pattern=r"^video_finished$"))
+appbot.add_handler(CallbackQueryHandler(final_route, pattern=r"^route:(menu|join|student|budget|later)$"))
 
 @asynccontextmanager
 async def lifespan(app):
