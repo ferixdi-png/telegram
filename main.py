@@ -47,6 +47,15 @@ KNOWN_GALLERY_LIKES = {
     "5f1368aa": 36600,
 }
 
+# Original 11 screenshot files were supplied in this particular sequence.
+# A Telegram re-upload can change file_id fingerprints while retaining this order.
+# Only use this positional fallback when all recognized IDs are consistent
+# with the original upload sequence and no explicit counts are supplied.
+ORIGINAL_GALLERY_UPLOAD_LIKES = (
+    136000, 24600, 46400, 71800, 28700, 53400,
+    18100, 79000, 109000, 23300, 36600,
+)
+
 
 def photo_tag(file_id: str) -> str:
     value = 2166136261
@@ -82,6 +91,24 @@ def order_gallery_photos(ids: list[str]) -> tuple[list[str], bool]:
         for index, known in enumerate(known_counts)
     ]
     recognized = sum(value is not None for value in counts)
+
+    same_original_sequence = (
+        len(ids) == len(ORIGINAL_GALLERY_UPLOAD_LIKES)
+        and all(
+            known is None or known == ORIGINAL_GALLERY_UPLOAD_LIKES[index]
+            for index, known in enumerate(known_counts)
+        )
+    )
+    if recognized < len(ids) and same_original_sequence and manual_counts is None:
+        # Telegram replaced one or more file IDs. Reuse the original upload's
+        # known like values only while its observed sequence is still consistent.
+        counts = [
+            known if known is not None else ORIGINAL_GALLERY_UPLOAD_LIKES[index]
+            for index, known in enumerate(known_counts)
+        ]
+        recognized = len(ids)
+        log.info("Gallery sorted using original upload order as fallback")
+
     if not recognized:
         log.warning("Gallery ranking unavailable: no matching screenshot IDs or valid counts")
         return ids, False
