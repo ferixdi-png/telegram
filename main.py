@@ -110,7 +110,7 @@ def page(index: int):
     if 0 <= index < len(STEPS):
         step = STEPS[index]
         return (
-            f'🏁 <b>РАЗБОР {index + 1:02d}/{len(STEPS)}</b>\n\n'
+            f'🏁 <b>ПРОВЕРЯЛ САМ {index + 1:02d}/{len(STEPS)}</b>\n\n'
             f'<b>{escape(step["myth"])}</b>\n\n'
             f'{escape(step["answer"])}'
         )
@@ -367,7 +367,7 @@ async def bot_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     source = "Telegram file_id" if cached_video_file_id else "GitHub Releases"
     await update.message.reply_text(
-        "🛠 Ferixdi Bot v3.5\n"
+        "🛠 Ferixdi Bot v3.6\n"
         "16 мифов в 10 разборах. Кнопки активны.\n"
         f"Видео: источник {source}.\n"
         f"Примеры: {len(example_photo_ids)} фото."
