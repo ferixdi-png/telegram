@@ -9,7 +9,7 @@
 2. Подключи GitHub и выбери репозиторий **ferixdi-png/telegram**.
 3. Render прочитает `render.yaml`. Выбери Free, если доступен.
 4. Добавь в Render секрет **BOT_TOKEN** из BotFather (никогда не в GitHub).
-5. В **WEBHOOK_BASE_URL** вставь публичный адрес Render, например `https://ferixdi-reels-bot.onrender.com`. Нужен фактически назначенный адрес без `/` на конце.
+5. Публичный адрес бот определяет автоматически по переменной Render `RENDER_EXTERNAL_HOSTNAME`. Вручную его вводить не нужно.
 6. **WEBHOOK_SECRET** Render сгенерирует автоматически. Если создаёшь Web Service вручную, задай собственную случайную строку букв/цифр длиной от 32 символов.
 7. Сделай Deploy/Redeploy и открой адрес сервиса. Должен ответить JSON `{"status":"ok","bot":"Ferixdi AI Reels"}`.
 8. Открой своего бота в Telegram и введи `/start`.
