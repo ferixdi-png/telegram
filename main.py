@@ -586,11 +586,12 @@ async def prepare_stepgif(message, number: int, media_message):
             return
 
     await message.reply_text(
-        f"✅ GIF для разбора {number:02d}/10 подготовлена!\n\n"
-        f"Telegram ID:\n{file_id}\n\n"
-        "Пришли этот ID мне в ChatGPT с номером разбора, "
-        "я привяжу GIF к шагу в GitHub без изменений в Render. "
-        "Сейчас это подготовленный ID, а не автоматическая установка."
+        f"✅ GIF для разбора {number:02d}/10 готова!\n\n"
+        f"KEY: STEP_ANIMATION_{number:02d}\n"
+        f"VALUE: {file_id}\n\n"
+        "Пришли этот ответ мне в ChatGPT, и я добавлю GIF в GitHub "
+        "без ручной настройки Render. "
+        "Сейчас выдан ID; GIF появится в воронке после подключения и деплоя."
     )
 
 
