@@ -895,11 +895,8 @@ async def final_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     appbot.create_task(deliver_original_video(query.message))
 
 
-async def video_finished(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    # Keep the link to cases on the original MP4, but move the menu to a text message.
+async def keep_cases_link_on_video(query):
+    """Update the old MP4's buttons without delaying the new menu."""
     try:
         await query.edit_message_reply_markup(
             reply_markup=InlineKeyboardMarkup([[
@@ -908,6 +905,14 @@ async def video_finished(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     except TelegramError:
         pass
+
+
+async def video_finished(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    # Keep the cases link on the MP4 while sending the menu immediately.
+    appbot.create_task(keep_cases_link_on_video(query))
 
     await query.message.reply_text(
         FINAL_MENU,
