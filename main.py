@@ -177,9 +177,12 @@ raw_example_photo_ids = [
 ][:MAX_EXAMPLE_PHOTOS]
 example_photo_ids, photo_gallery_sorted = order_gallery_photos(raw_example_photo_ids)
 
+FIRST_MYTH_BUTTON = "🔥 РАЗОБЛАЧИТЬ ПЕРВЫЙ МИФ →"
+
+
 def keyboard(index: int):
     if index == -2:
-        buttons = [[InlineKeyboardButton("🏁 Давай к мифам", callback_data="next:0")]]
+        buttons = [[InlineKeyboardButton(FIRST_MYTH_BUTTON, callback_data="next:0")]]
         if len(example_photo_ids) > 5:
             buttons.append([InlineKeyboardButton(
                 f"📸 Ещё {len(example_photo_ids) - 5} скринов",
@@ -192,7 +195,7 @@ def keyboard(index: int):
                 InlineKeyboardButton("🔥 А какие ролики залетали?", callback_data="show_examples")
             ]])
         return InlineKeyboardMarkup([[
-            InlineKeyboardButton("🏁 Поехали к мифам", callback_data="next:0")
+            InlineKeyboardButton(FIRST_MYTH_BUTTON, callback_data="next:0")
         ]])
     if 0 <= index < len(STEPS):
         if index == len(STEPS) - 1:
@@ -269,7 +272,7 @@ def myth_label(index: int, custom_font: bool = True) -> str:
         )
     else:
         letters = "<b>МИФ</b>"
-    return f'{letters} <b>{index + 1:02d}/{len(STEPS)}</b>'
+    return f'{letters} <b>{index + 1}</b>'
 
 
 def page(index: int, custom_font: bool | None = None):
@@ -413,7 +416,7 @@ async def more_examples(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.message.reply_text(
         "🏎 Вот такие истории заходят 😄 А теперь покажу свои наблюдения.",
         reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("🔥 Давай первый миф", callback_data="next:0")
+            InlineKeyboardButton(FIRST_MYTH_BUTTON, callback_data="next:0")
         ]]),
     )
     log.info("funnel_more_examples")
@@ -961,7 +964,7 @@ async def bot_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     source = "Telegram file_id" if cached_video_file_id else "GitHub Releases (проверь, прикреплён ли MP4)"
     await update.message.reply_text(
-        "🛠 Ferixdi Bot v4.17\n"
+        "🛠 Ferixdi Bot v4.18\n"
         "16 мифов в 10 разборах. Кнопки активны.\n"
         f"Видео: источник {source}.\n"
         f"Примеры: {len(example_photo_ids)} фото.\n"
