@@ -469,7 +469,7 @@ async def more_examples(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except TelegramError as exc:
         log.warning("Could not send extra examples: %s", type(exc).__name__)
     await query.message.reply_text(
-        "🏎 Вот такие истории заходят 🔥 А теперь покажу свои наблюдения.",
+        "🔥 И эти скрины тоже с РОЛИКОВ-МИЛЛИОННИКОВ по просмотрам. А теперь покажу свои наблюдения.",
         reply_markup=InlineKeyboardMarkup([[
             InlineKeyboardButton(FIRST_MYTH_BUTTON, callback_data="next:0")
         ]]),
@@ -1067,7 +1067,7 @@ async def bot_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     source = "Telegram file_id" if cached_video_file_id else "GitHub Releases (проверь, прикреплён ли MP4)"
     await update.message.reply_text(
-        "🛠 Ferixdi Bot v4.28\n"
+        "🛠 Ferixdi Bot v4.29\n"
         "16 мифов в 10 разборах. Кнопки активны.\n"
         f"Видео: источник {source}.\n"
         f"Примеры: {len(example_photo_ids)} фото.\n"
