@@ -8,6 +8,10 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 from content import STEPS, INTRO, CASES, OFFER, COURSE_URL
 
 logging.basicConfig(level=logging.INFO)
+# httpx logs request URLs; Telegram Bot API URLs contain the bot token.
+# Keep these requests out of Render logs to avoid leaking credentials.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 log = logging.getLogger("ferixdi")
 TOKEN = os.environ["BOT_TOKEN"]
 WEBHOOK_BASE_URL = (os.getenv("WEBHOOK_BASE_URL") or "https://" + os.environ["RENDER_EXTERNAL_HOSTNAME"]).rstrip("/")
