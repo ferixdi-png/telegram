@@ -448,8 +448,35 @@ async def collect_gallery_item(update: Update, context: ContextTypes.DEFAULT_TYP
         )
 
 
+async def send_algorithm_image_id(message, photo_message):
+    """Return the exact Telegram photo ID so the algorithm article survives deploys."""
+    if photo_message is None or not photo_message.photo:
+        await message.reply_text(
+            "📸 Отправь картинку как обычное фото с подписью /algimage "
+            "или ответь на неё отдельной командой /algimage."
+        )
+        return
+    file_id = photo_message.photo[-1].file_id
+    await message.reply_text(
+        "✅ Картинка для блока об алгоритмах получена!\\n\\n"
+        "KEY: ALGORITHM_PHOTO_FILE_ID\\n"
+        f"VALUE: {file_id}\\n\\n"
+        "Перешли мне этот ответ в ChatGPT, подключу изображение "
+        "в GitHub без изменений в Render. Видео и GIF останутся прежними."
+    )
+
+
+async def algimage(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    message = update.message
+    if message:
+        await send_algorithm_image_id(message, message.reply_to_message)
+
+
 async def receive_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message and update.message.photo:
+        if (update.message.caption or "").strip().split("@", 1)[0].lower() == "/algimage":
+            await send_algorithm_image_id(update.message, update.message)
+            return
         await collect_gallery_item(update, context, "photo", update.message.photo[-1])
 
 
@@ -828,6 +855,12 @@ def id_message(file_id: str) -> str:
 
 
 async def receive_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if (update.message.caption or "").strip().split("@", 1)[0].lower() == "/algimage":
+        await update.message.reply_text(
+            "📸 Пришли изображение для блока об алгоритмах как обычное фото, "
+            "а не как документ. Добавь подпись /algimage."
+        )
+        return
     number = stepgif_caption_number(update.message)
     if number is not None:
         await prepare_stepgif(update.message, number, update.message)
@@ -1100,6 +1133,7 @@ async def final_route(update: Update, context: ContextTypes.DEFAULT_TYPE):
 appbot.add_handler(CommandHandler("start", start))
 appbot.add_handler(CommandHandler("stepgif", stepgif))
 appbot.add_handler(CommandHandler("fileid", fileid))
+appbot.add_handler(CommandHandler("algimage", algimage))
 appbot.add_handler(CommandHandler("emojifont", emoji_font))
 appbot.add_handler(CommandHandler("status", status))
 appbot.add_handler(CommandHandler("link", bot_link))
