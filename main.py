@@ -29,7 +29,7 @@ example_photo_ids = [v.strip() for v in os.getenv("EXAMPLE_PHOTO_IDS", "").split
 
 def keyboard(index: int):
     if index == -2:
-        buttons = [[InlineKeyboardButton("🏁 Перейти к мифам", callback_data="next:0")]]
+        buttons = [[InlineKeyboardButton("🏁 К первому мифу", callback_data="next:0")]]
         if len(example_photo_ids) > 5:
             extra = len(example_photo_ids) - 5
             buttons.append([InlineKeyboardButton(f"📸 Ещё {extra} примеров", callback_data="more_examples")])
@@ -37,7 +37,7 @@ def keyboard(index: int):
     if index == -1:
         if example_photo_ids:
             return InlineKeyboardMarkup([[
-                InlineKeyboardButton("🎬 Показать примеры", callback_data="show_examples")
+                InlineKeyboardButton("🔥 Покажи, что залетало", callback_data="show_examples")
             ]])
         return InlineKeyboardMarkup([[
             InlineKeyboardButton("🏁 Поехали к мифам", callback_data="next:0")
@@ -93,7 +93,7 @@ def page(index: int):
     if index == -1:
         if example_photo_ids:
             return INTRO
-        return INTRO.replace("покажу разные форматы, ", "")
+        return INTRO.replace("покажу живые примеры, ", "")
     if index < len(STEPS):
         step = STEPS[index]
         return (
@@ -166,7 +166,7 @@ async def more_examples(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except TelegramError as exc:
         log.warning("Could not send extra examples: %s", type(exc).__name__)
     await query.message.reply_text(
-        "🏁 Примеры посмотрели — теперь к моим 15 проверкам.",
+        "🏎 Вот такие сюжеты 😄 А теперь к 16 мифам.",
         reply_markup=InlineKeyboardMarkup([[
             InlineKeyboardButton("🔥 Первый миф", callback_data="next:0")
         ]]),
@@ -261,8 +261,8 @@ async def fileid(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     source = "Telegram file_id" if cached_video_file_id else "GitHub Releases"
     await update.message.reply_text(
-        "🛠 Ferixdi Bot v2.9\n"
-        "15 мифов и кнопки активны.\n"
+        "🛠 Ferixdi Bot v3.0\n"
+        "16 мифов и кнопки активны.\n"
         f"Видео: источник {source}.\n"
         f"Примеры: {len(example_photo_ids)} фото."
     )
@@ -273,7 +273,7 @@ async def deliver_original_video(source_message):
     global cached_video_file_id
     markup = InlineKeyboardMarkup([
         [InlineKeyboardButton("📊 Смотреть кейсы на сайте", url=CASES_URL)],
-        [InlineKeyboardButton("🏁 Видео посмотрел, что дальше?", callback_data="video_finished")],
+        [InlineKeyboardButton("🏁 Посмотрел. Что дальше?", callback_data="video_finished")],
     ])
     try:
         if cached_video_file_id:
