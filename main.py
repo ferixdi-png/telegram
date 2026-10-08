@@ -6,7 +6,7 @@ from fastapi import FastAPI, Request, HTTPException
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from telegram.error import TelegramError
-from content import STEPS, INTRO, CASES, VIDEO_HOOK, OFFER, COURSE_URL, VIDEO_CAPTION
+from content import STEPS, INTRO, CASES, VIDEO_HOOK, CASES_URL, VIDEO_CAPTION
 from video_source import get_original_video, VIDEO_SOURCE_URL
 
 logging.basicConfig(level=logging.INFO)
@@ -37,7 +37,7 @@ def keyboard(index: int):
         ]])
     else:
         return InlineKeyboardMarkup([[
-            InlineKeyboardButton("📊 Смотреть кейсы с нуля", url=COURSE_URL)
+            InlineKeyboardButton("📊 Смотреть кейсы с нуля", url=CASES_URL)
         ]])
     return InlineKeyboardMarkup([[InlineKeyboardButton(label, callback_data=f"next:{index+1}")]])
 
@@ -49,9 +49,7 @@ def page(index: int):
         return f'🔥 МИФ №{index+1} ИЗ {len(STEPS)}\n\n❌ {step["myth"]}\n\n✅ МОЙ ОПЫТ\n{step["answer"]}'
     if index == len(STEPS):
         return CASES
-    if index == len(STEPS) + 1:
-        return VIDEO_HOOK
-    return OFFER
+    return VIDEO_HOOK
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message:
@@ -122,7 +120,7 @@ async def deliver_original_video(source_message):
     """Send the unchanged MP4 document, keeping the webhook response fast."""
     global cached_video_file_id
     markup = InlineKeyboardMarkup([[
-        InlineKeyboardButton("📊 Покажи цифры и кейсы", callback_data="after_video")
+        InlineKeyboardButton("📊 Все реальные кейсы с нуля", url=CASES_URL)
     ]])
     try:
         if cached_video_file_id:
@@ -167,29 +165,12 @@ async def final_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     appbot.create_task(deliver_original_video(query.message))
 
 
-async def after_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    try:
-        await query.edit_message_reply_markup(reply_markup=None)
-    except TelegramError:
-        pass
-    await query.message.reply_text(
-        OFFER,
-        reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("📊 Смотреть реальные кейсы с нуля", url=COURSE_URL)
-        ]]),
-        disable_web_page_preview=True,
-    )
-
-
 appbot.add_handler(CommandHandler("start", start))
 appbot.add_handler(CommandHandler("fileid", fileid))
 appbot.add_handler(CommandHandler("status", status))
 appbot.add_handler(MessageHandler(filters.Document.ALL, receive_document))
 appbot.add_handler(CallbackQueryHandler(next_step, pattern=r"^next:\d+$"))
 appbot.add_handler(CallbackQueryHandler(final_video, pattern=r"^final_video$"))
-appbot.add_handler(CallbackQueryHandler(after_video, pattern=r"^after_video$"))
 
 @asynccontextmanager
 async def lifespan(app):
