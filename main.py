@@ -5,7 +5,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
-from content import STEPS, INTRO, CASES, OFFER, COURSE_URL
+from telegram.error import TelegramError
+from content import STEPS, INTRO, CASES, OFFER, COURSE_URL, VIDEO_CAPTION
 
 logging.basicConfig(level=logging.INFO)
 # httpx logs request URLs; Telegram Bot API URLs contain the bot token.
@@ -28,6 +29,10 @@ def keyboard(index: int):
         label = "📊 Посмотреть реальные кейсы"
     elif index == len(STEPS):
         label = "🎓 Как устроено обучение?"
+    elif index == len(STEPS) + 1:
+        return InlineKeyboardMarkup([[
+            InlineKeyboardButton("🎬 Получить оригинальное видео", callback_data="final_video")
+        ]])
     else:
         return InlineKeyboardMarkup([[InlineKeyboardButton("🚀 Посмотреть программу", url=COURSE_URL)]])
     return InlineKeyboardMarkup([[InlineKeyboardButton(label, callback_data=f"next:{index+1}")]])
@@ -62,8 +67,62 @@ async def next_step(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.message.reply_text(page(index), reply_markup=keyboard(index), disable_web_page_preview=True)
     log.info("funnel_step=%s", index)
 
+async def fileid(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Get the reusable Telegram file_id without downloading or altering the file."""
+    msg = update.message
+    original = msg.reply_to_message if msg else None
+    if not original or not original.document:
+        await msg.reply_text(
+            "🎬 Пришли исходный MP4 в этот чат именно как ФАЙЛ "
+            "(без сжатия). Затем ответь на сообщение с файлом командой /fileid."
+        )
+        return
+    document = original.document
+    await msg.reply_text(
+        "✅ Файл сохранён на стороне Telegram без перекодирования.\n\n"
+        "Добавь в Render → Environment:\n"
+        "KEY: VIDEO_FILE_ID\n"
+        f"VALUE: {document.file_id}\n\n"
+        "Сохрани и дождись перезапуска сервиса. "
+        "После этого последний шаг воронки будет отправлять исходный MP4."
+    )
+
+
+async def final_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    file_id = os.getenv("VIDEO_FILE_ID", "").strip()
+    if not file_id:
+        await query.message.reply_text("🎬 Видео скоро появится здесь. Загляни немного позже.")
+        return
+
+    try:
+        await context.bot.send_document(
+            chat_id=query.message.chat_id,
+            document=file_id,
+            caption=VIDEO_CAPTION,
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🚀 Посмотреть программу обучения", url=COURSE_URL)
+            ]]),
+            read_timeout=90,
+            write_timeout=90,
+        )
+    except TelegramError as exc:
+        log.error("Final original file delivery failed: %s", type(exc).__name__)
+        await query.message.reply_text("Видео временно недоступно. Попробуй ещё раз позже.")
+        return
+
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except TelegramError:
+        pass
+    log.info("final_original_video_sent")
+
+
 appbot.add_handler(CommandHandler("start", start))
+appbot.add_handler(CommandHandler("fileid", fileid))
 appbot.add_handler(CallbackQueryHandler(next_step, pattern=r"^next:\d+$"))
+appbot.add_handler(CallbackQueryHandler(final_video, pattern=r"^final_video$"))
 
 @asynccontextmanager
 async def lifespan(app):
