@@ -353,6 +353,17 @@ async def fileid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+async def bot_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Provide the actual t.me deep link without exposing the token or guessing a username."""
+    info = await appbot.bot.get_me()
+    await update.message.reply_text(
+        f"🔗 Прямая ссылка на бота:\n"
+        f"https://t.me/{info.username}?start=ferixdi\n\n"
+        "При первом открытии человек нажмёт «Запустить», "
+        "и бот сразу покажет приветствие."
+    )
+
+
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     source = "Telegram file_id" if cached_video_file_id else "GitHub Releases"
     await update.message.reply_text(
@@ -468,6 +479,7 @@ async def final_route(update: Update, context: ContextTypes.DEFAULT_TYPE):
 appbot.add_handler(CommandHandler("start", start))
 appbot.add_handler(CommandHandler("fileid", fileid))
 appbot.add_handler(CommandHandler("status", status))
+appbot.add_handler(CommandHandler("link", bot_link))
 appbot.add_handler(CommandHandler("galleryids", galleryids))
 appbot.add_handler(CommandHandler("galleryclear", galleryclear))
 appbot.add_handler(MessageHandler(filters.PHOTO, receive_photo))
