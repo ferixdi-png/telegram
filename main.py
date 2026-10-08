@@ -96,6 +96,7 @@ STEP_MP4_DOCUMENT_IDS = {
     2: "BQACAgIAAxkBAAPXasdcAzlMa2n9cdZr6RZTzNxp_YgAAl2jAAJF4DhKXCGLrE7BuMk9BA",
     3: "BQACAgIAAxkBAAPZasdcXTV7iaNB4Ezs1UpjOY1qUuIAAmKjAAJF4DhKVPHVZTAw-Qw9BA",
     4: "BQACAgIAAxkBAAPpasdew5s5pwPzbmu3COOReZe6EVkAApujAAJF4DhK0qibIBsDpWk9BA",
+    5: "BQACAgIAAxkBAAPrasdfCAbUpZhU2OAgzfko29cn6okAAp6jAAJF4DhKLKnGanWDTpA9BA",
 }
 cached_step_animation_ids = {}
 step_animation_locks = {number: asyncio.Lock() for number in STEP_MP4_DOCUMENT_IDS}
@@ -720,7 +721,7 @@ async def bot_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     source = "Telegram file_id" if cached_video_file_id else "GitHub Releases (проверь, прикреплён ли MP4)"
     await update.message.reply_text(
-        "🛠 Ferixdi Bot v4.6\n"
+        "🛠 Ferixdi Bot v4.7\n"
         "16 мифов в 10 разборах. Кнопки активны.\n"
         f"Видео: источник {source}.\n"
         f"Примеры: {len(example_photo_ids)} фото" + (" (по лайкам).\n" if photo_gallery_sorted else ".\n")
