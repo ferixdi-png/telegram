@@ -29,7 +29,59 @@ PATH = "/telegram/webhook"
 appbot = Application.builder().token(TOKEN).updater(None).build()
 cached_video_file_id = os.getenv("VIDEO_FILE_ID", "").strip()
 MAX_EXAMPLE_PHOTOS = 11
-example_photo_ids = [v.strip() for v in os.getenv("EXAMPLE_PHOTO_IDS", "").split(",") if v.strip()][:MAX_EXAMPLE_PHOTOS]
+
+# Verified likes on the 11 screenshot originals, matched to the Telegram IDs
+# given for this gallery. Keep only fingerprints in public source code.
+# Other galleries can use EXAMPLE_PHOTO_LIKES, aligned with their ID order.
+KNOWN_GALLERY_LIKES = {
+    "5b0e1798": 136000,
+    "f59e5840": 24600,
+    "74d53395": 46400,
+    "3479a1a3": 71800,
+    "4a3cfa4c": 28700,
+    "8323dfdd": 53400,
+    "e5c7e7d3": 18100,
+    "14acce47": 79000,
+    "4afad786": 109000,
+    "3390a63c": 23300,
+    "5f1368aa": 36600,
+}
+
+
+def photo_tag(file_id: str) -> str:
+    value = 2166136261
+    for char in file_id:
+        value = ((value ^ ord(char)) * 16777619) & 0xffffffff
+    return f"{value:08x}"
+
+
+def order_gallery_photos(ids: list[str]) -> tuple[list[str], bool]:
+    if not ids:
+        return ids, False
+
+    manual = os.getenv("EXAMPLE_PHOTO_LIKES", "").strip()
+    if manual:
+        try:
+            likes = [int(s.strip().replace(" ", "")) for s in manual.split(",")]
+        except ValueError:
+            likes = []
+        if len(likes) == len(ids) and all(x >= 0 for x in likes):
+            return [photo for photo, count in sorted(
+                zip(ids, likes), key=lambda pair: pair[1], reverse=True
+            )], True
+        log.warning("EXAMPLE_PHOTO_LIKES must match EXAMPLE_PHOTO_IDS length")
+
+    tags = [photo_tag(file_id) for file_id in ids]
+    if len(ids) == MAX_EXAMPLE_PHOTOS and all(tag in KNOWN_GALLERY_LIKES for tag in tags):
+        return sorted(ids, key=lambda file_id: KNOWN_GALLERY_LIKES[photo_tag(file_id)], reverse=True), True
+
+    return ids, False
+
+
+raw_example_photo_ids = [
+    v.strip() for v in os.getenv("EXAMPLE_PHOTO_IDS", "").split(",") if v.strip()
+][:MAX_EXAMPLE_PHOTOS]
+example_photo_ids, photo_gallery_sorted = order_gallery_photos(raw_example_photo_ids)
 
 def keyboard(index: int):
     if index == -2:
@@ -367,10 +419,10 @@ async def bot_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     source = "Telegram file_id" if cached_video_file_id else "GitHub Releases"
     await update.message.reply_text(
-        "🛠 Ferixdi Bot v3.6\n"
+        "🛠 Ferixdi Bot v3.7\n"
         "16 мифов в 10 разборах. Кнопки активны.\n"
         f"Видео: источник {source}.\n"
-        f"Примеры: {len(example_photo_ids)} фото."
+        f"Примеры: {len(example_photo_ids)} фото" + (" (по лайкам)." if photo_gallery_sorted else ".")
     )
 
 
