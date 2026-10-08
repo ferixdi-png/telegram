@@ -340,10 +340,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def show_examples(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    try:
-        await query.edit_message_reply_markup(reply_markup=None)
-    except TelegramError:
-        pass
+    appbot.create_task(clear_used_button(query))
 
     if example_photo_ids:
         try:
@@ -376,10 +373,7 @@ async def more_examples(update: Update, context: ContextTypes.DEFAULT_TYPE):
     remaining = example_photo_ids[5:]
     if not remaining:
         return
-    try:
-        await query.edit_message_reply_markup(reply_markup=None)
-    except TelegramError:
-        pass
+    appbot.create_task(clear_used_button(query))
     try:
         if len(remaining) == 1:
             await appbot.bot.send_photo(
