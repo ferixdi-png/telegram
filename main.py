@@ -758,6 +758,7 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "16 мифов в 10 разборах. Кнопки активны.\n"
         f"Видео: источник {source}.\n"
         f"Примеры: {len(example_photo_ids)} фото.\n"
+        + f"Знакомые скрины: {sum(photo_tag(fid) in KNOWN_GALLERY_LIKES for fid in example_photo_ids)}/{len(example_photo_ids)}.\n"
         + f"GIF к разборам: {len(set(step_animation_ids) | set(cached_step_animation_ids))}/{len(STEPS)}.\n"
         + "MP4 для GIF: "
         + ", ".join(f"{n:02d}/10" for n in sorted(STEP_MP4_DOCUMENT_IDS))
