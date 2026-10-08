@@ -25,7 +25,8 @@ WEBHOOK_SECRET = os.environ["WEBHOOK_SECRET"]
 PATH = "/telegram/webhook"
 appbot = Application.builder().token(TOKEN).updater(None).build()
 cached_video_file_id = os.getenv("VIDEO_FILE_ID", "").strip()
-example_photo_ids = [v.strip() for v in os.getenv("EXAMPLE_PHOTO_IDS", "").split(",") if v.strip()][:11]
+MAX_EXAMPLE_PHOTOS = 12
+example_photo_ids = [v.strip() for v in os.getenv("EXAMPLE_PHOTO_IDS", "").split(",") if v.strip()][:MAX_EXAMPLE_PHOTOS]
 
 def keyboard(index: int):
     if index == -2:
@@ -182,28 +183,33 @@ async def receive_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     new_id = update.message.photo[-1].file_id
     if new_id not in ids:
         ids.append(new_id)
-    context.chat_data["pending_example_ids"] = ids[-11:]
+    context.chat_data["pending_example_ids"] = ids[-MAX_EXAMPLE_PHOTOS:]
+    if len(context.chat_data["pending_example_ids"]) == MAX_EXAMPLE_PHOTOS:
+        await update.message.reply_text(
+            "✅ Все 12 скриншотов получил! Отправь /galleryids — соберу одну строку для Render."
+        )
 
 
 async def galleryids(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ids = context.chat_data.get("pending_example_ids", [])
-    if not ids:
+    if len(ids) < MAX_EXAMPLE_PHOTOS:
         await update.message.reply_text(
-            "📸 Пришли 11 скриншотов обычными фотографиями, затем отправь /galleryids."
+            f"📸 Пока получил {len(ids)} из {MAX_EXAMPLE_PHOTOS} скриншотов. "
+            "Отправь остальные как фото, затем повтори /galleryids."
         )
         return
     await update.message.reply_text(
-        "✅ Фото для примеров сохранены в этом чате.\n\n"
-        "Скопируй в Render → Environment:\n"
+        f"✅ Все {len(ids)} фото готовы!\n\n"
+        "В Render → Environment добавь:\n"
         "KEY: EXAMPLE_PHOTO_IDS\n"
         "VALUE:\n" + ",".join(ids) + "\n\n"
-        "Сохрани настройки и дождись Live."
+        "Сохрани настройки, дождись Live и проверь /status."
     )
 
 
 async def galleryclear(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.chat_data["pending_example_ids"] = []
-    await update.message.reply_text("📸 Подборка очищена. Можно отправлять новые фото.")
+    await update.message.reply_text("📸 Список очищен. Пришли 12 скриншотов как обычные фото: альбомом 10 + 2 или по одному.")
 
 
 async def next_step(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -261,7 +267,7 @@ async def fileid(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     source = "Telegram file_id" if cached_video_file_id else "GitHub Releases"
     await update.message.reply_text(
-        "🛠 Ferixdi Bot v3.0\n"
+        "🛠 Ferixdi Bot v3.1\n"
         "16 мифов и кнопки активны.\n"
         f"Видео: источник {source}.\n"
         f"Примеры: {len(example_photo_ids)} фото."
