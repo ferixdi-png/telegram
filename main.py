@@ -88,7 +88,7 @@ def keyboard(index: int):
         buttons = [[InlineKeyboardButton("🏁 Давай к мифам", callback_data="next:0")]]
         if len(example_photo_ids) > 5:
             buttons.append([InlineKeyboardButton(
-                f"📸 Ещё {len(example_photo_ids) - 5} роликов",
+                f"📸 Ещё {len(example_photo_ids) - 5} скринов",
                 callback_data="more_examples",
             )])
         return InlineKeyboardMarkup(buttons)
