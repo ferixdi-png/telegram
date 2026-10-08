@@ -1,10 +1,12 @@
 import os
 import hmac
 import logging
+import asyncio
+import io
 from html import escape
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, InputFile
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from telegram.error import TelegramError
 from content import (
@@ -25,7 +27,7 @@ WEBHOOK_SECRET = os.environ["WEBHOOK_SECRET"]
 PATH = "/telegram/webhook"
 appbot = Application.builder().token(TOKEN).updater(None).build()
 cached_video_file_id = os.getenv("VIDEO_FILE_ID", "").strip()
-MAX_EXAMPLE_PHOTOS = 12
+MAX_EXAMPLE_PHOTOS = 11
 example_photo_ids = [v.strip() for v in os.getenv("EXAMPLE_PHOTO_IDS", "").split(",") if v.strip()][:MAX_EXAMPLE_PHOTOS]
 
 def keyboard(index: int):
@@ -175,41 +177,109 @@ async def more_examples(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log.info("funnel_more_examples")
 
 
-async def receive_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Collect image file IDs in the sender's chat for /galleryids; not public funnel state."""
-    if not update.message or not update.message.photo:
+async def collect_gallery_item(update: Update, context: ContextTypes.DEFAULT_TYPE, kind: str, file):
+    """Keep Telegram photo or PNG/JPG document IDs until /galleryids prepares them."""
+    items = context.chat_data.setdefault("gallery_items", [])
+    unique_id = file.file_unique_id
+    if any(item["unique_id"] == unique_id for item in items):
         return
-    ids = context.chat_data.setdefault("pending_example_ids", [])
-    new_id = update.message.photo[-1].file_id
-    if new_id not in ids:
-        ids.append(new_id)
-    context.chat_data["pending_example_ids"] = ids[-MAX_EXAMPLE_PHOTOS:]
-    if len(context.chat_data["pending_example_ids"]) == MAX_EXAMPLE_PHOTOS:
+    if len(items) >= MAX_EXAMPLE_PHOTOS:
+        return
+    items.append({"kind": kind, "file_id": file.file_id, "unique_id": unique_id})
+    context.chat_data.pop("gallery_ready_ids", None)
+    if len(items) == MAX_EXAMPLE_PHOTOS:
         await update.message.reply_text(
-            "✅ Все 12 скриншотов получил! Отправь /galleryids — соберу одну строку для Render."
+            "✅ Все 11 скриншотов на месте! Отправь /galleryids — подготовлю фотографии для галереи."
         )
+
+
+async def receive_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message and update.message.photo:
+        await collect_gallery_item(update, context, "photo", update.message.photo[-1])
+
+
+async def prepare_gallery(message, context: ContextTypes.DEFAULT_TYPE):
+    """Convert uploaded PNG/JPG documents to reusable Telegram photo IDs."""
+    try:
+        items = list(context.chat_data.get("gallery_items", []))
+        ids = []
+        for item in items:
+            if item["kind"] == "photo":
+                ids.append(item["file_id"])
+                continue
+
+            file = await appbot.bot.get_file(item["file_id"])
+            image_bytes = await file.download_as_bytearray()
+            converted = await appbot.bot.send_photo(
+                chat_id=message.chat_id,
+                photo=InputFile(io.BytesIO(image_bytes), filename="reels-example.png"),
+                disable_notification=True,
+            )
+            ids.append(converted.photo[-1].file_id)
+            try:
+                await appbot.bot.delete_message(
+                    chat_id=message.chat_id,
+                    message_id=converted.message_id,
+                )
+            except TelegramError:
+                pass
+            await asyncio.sleep(1.05)
+
+        if len(ids) != MAX_EXAMPLE_PHOTOS:
+            raise ValueError("Gallery item count changed during preparation")
+        context.chat_data["gallery_ready_ids"] = ids
+        await message.reply_text(
+            "✅ Все 11 фото готовы!\n\n"
+            "В Render → Environment добавь:\n"
+            "KEY: EXAMPLE_PHOTO_IDS\n"
+            "VALUE:\n" + ",".join(ids) + "\n\n"
+            "Сохрани настройки, дождись Live и проверь /status."
+        )
+    except Exception as exc:
+        log.warning("Preparing gallery failed: %s", type(exc).__name__)
+        await message.reply_text(
+            "📸 С одним из изображений возникла проблема. "
+            "Попробуй отправить скриншоты обычными фотографиями после /galleryclear."
+        )
+    finally:
+        context.chat_data["gallery_preparing"] = False
 
 
 async def galleryids(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    ids = context.chat_data.get("pending_example_ids", [])
-    if len(ids) < MAX_EXAMPLE_PHOTOS:
+    items = context.chat_data.get("gallery_items", [])
+    if len(items) < MAX_EXAMPLE_PHOTOS:
         await update.message.reply_text(
-            f"📸 Пока получил {len(ids)} из {MAX_EXAMPLE_PHOTOS} скриншотов. "
-            "Отправь остальные как фото, затем повтори /galleryids."
+            f"📸 Пока получил {len(items)} из {MAX_EXAMPLE_PHOTOS} скриншотов. "
+            "Можно присылать фото или PNG/JPG как файлы."
         )
         return
+    ids = context.chat_data.get("gallery_ready_ids")
+    if ids and len(ids) == MAX_EXAMPLE_PHOTOS:
+        await update.message.reply_text(
+            "✅ Готовая строка для Render → EXAMPLE_PHOTO_IDS:\n"
+            + ",".join(ids)
+        )
+        return
+    if context.chat_data.get("gallery_preparing"):
+        await update.message.reply_text(
+            "🔄 Уже готовлю фотографии. Через минуту пришлю готовую строку."
+        )
+        return
+    context.chat_data["gallery_preparing"] = True
     await update.message.reply_text(
-        f"✅ Все {len(ids)} фото готовы!\n\n"
-        "В Render → Environment добавь:\n"
-        "KEY: EXAMPLE_PHOTO_IDS\n"
-        "VALUE:\n" + ",".join(ids) + "\n\n"
-        "Сохрани настройки, дождись Live и проверь /status."
+        "📸 Получил все 11. Сейчас подготовлю PNG-файлы для галереи. "
+        "Это займёт около минуты, готовые ID пришлю сюда."
     )
+    appbot.create_task(prepare_gallery(update.message, context))
 
 
 async def galleryclear(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.chat_data["pending_example_ids"] = []
-    await update.message.reply_text("📸 Список очищен. Пришли 12 скриншотов как обычные фото: альбомом 10 + 2 или по одному.")
+    context.chat_data["gallery_items"] = []
+    context.chat_data["gallery_ready_ids"] = []
+    await update.message.reply_text(
+        "📸 Список очищен. Пришли 11 скриншотов как фото или как PNG/JPG-файлы. "
+        "Когда всё отправишь, напиши /galleryids."
+    )
 
 
 async def next_step(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -243,11 +313,21 @@ async def receive_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     document = update.message.document
     if not document:
         return
-    if not (document.file_name or "").lower().endswith(".mp4"):
-        await update.message.reply_text("🎬 Для финального этапа пришли MP4 как файл.")
+    name = (document.file_name or "").lower()
+    mime = document.mime_type or ""
+    if name.endswith((".png", ".jpg", ".jpeg", ".webp")) or mime in (
+        "image/png", "image/jpeg", "image/webp"
+    ):
+        await collect_gallery_item(update, context, "document", document)
         return
-    context.chat_data["last_mp4_file_id"] = document.file_id
-    await update.message.reply_text(id_message(document.file_id))
+    if name.endswith(".mp4") or mime == "video/mp4":
+        context.chat_data["last_mp4_file_id"] = document.file_id
+        await update.message.reply_text(id_message(document.file_id))
+        return
+    await update.message.reply_text(
+        "📸 Для подборки пришли PNG/JPG как файл или обычное фото. "
+        "Для финального ролика подойдёт MP4."
+    )
 
 
 async def fileid(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -267,7 +347,7 @@ async def fileid(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     source = "Telegram file_id" if cached_video_file_id else "GitHub Releases"
     await update.message.reply_text(
-        "🛠 Ferixdi Bot v3.1\n"
+        "🛠 Ferixdi Bot v3.2\n"
         "16 мифов и кнопки активны.\n"
         f"Видео: источник {source}.\n"
         f"Примеры: {len(example_photo_ids)} фото."
