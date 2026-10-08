@@ -254,7 +254,7 @@ def page(index: int):
     if 0 <= index < len(STEPS):
         step = STEPS[index]
         return (
-            f'🏁 <b>ПРОВЕРЯЛ САМ {index + 1:02d}/{len(STEPS)}</b>\n\n'
+            f'🏁 <b>МИФ {index + 1:02d}/{len(STEPS)}</b>\n\n'
             f'<b>{escape(step["myth"])}</b>\n\n'
             f'{escape(step["answer"])}'
         )
