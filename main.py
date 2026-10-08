@@ -11,7 +11,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Mess
 from telegram.error import TelegramError
 from content import (
     STEPS, INTRO, SHOWCASE, CASES, VIDEO_HOOK, CASES_URL, VIDEO_CAPTION,
-    FINAL_MENU, DOUBTS_TEXT, JOIN_TEXT, STUDENT_TEXT, BUDGET_TEXT, MARKET_TEXT, ZERO_TEXT, LATER_TEXT, CONTACT_URL,
+    FINAL_MENU, DOUBTS_TEXT, JOIN_TEXT, STUDENT_TEXT, BUDGET_TEXT, MARKET_TEXT, ZERO_TEXT, EASY_TEXT, SKILLED_TEXT, LATER_TEXT, CONTACT_URL,
 )
 from video_source import get_original_video, VIDEO_SOURCE_URL
 
@@ -65,6 +65,7 @@ def route_keyboard(route: str):
     if route == "menu":
         return InlineKeyboardMarkup([
             [InlineKeyboardButton("🎓 Хочу разобраться глубже", callback_data="route:join")],
+            [InlineKeyboardButton("😎 Я и так умею", callback_data="route:skilled")],
             [InlineKeyboardButton("🤔 Есть сомнения", callback_data="route:doubts")],
             [InlineKeyboardButton("✅ Я уже в группе", callback_data="route:student")],
             [InlineKeyboardButton("📊 Посмотреть кейсы", url=CASES_URL)],
@@ -72,6 +73,7 @@ def route_keyboard(route: str):
 
     if route == "doubts":
         return InlineKeyboardMarkup([
+            [InlineKeyboardButton("🧩 Всё слишком сложно?", callback_data="route:easy")],
             [InlineKeyboardButton("💸 Пока дороговато", callback_data="route:budget")],
             [InlineKeyboardButton("🤖 AI-рынок перегрет?", callback_data="route:market")],
             [InlineKeyboardButton("🚀 С нуля уже поздно?", callback_data="route:zero")],
@@ -79,12 +81,18 @@ def route_keyboard(route: str):
             [InlineKeyboardButton("↩️ Назад", callback_data="route:menu")],
         ])
 
-    if route in ("join", "budget", "market", "zero"):
+    if route in ("join", "budget", "market", "zero", "easy"):
         back_to = "menu" if route == "join" else "doubts"
         return InlineKeyboardMarkup([
             [InlineKeyboardButton("📊 Программа и кейсы", url=CASES_URL)],
             [InlineKeyboardButton("💬 Написать @ferixdiii", url=CONTACT_URL)],
             [InlineKeyboardButton("↩️ Назад", callback_data=f"route:{back_to}")],
+        ])
+
+    if route == "skilled":
+        return InlineKeyboardMarkup([
+            [InlineKeyboardButton("🤝 Обсудить свой трафик", url=CONTACT_URL)],
+            [InlineKeyboardButton("↩️ Назад", callback_data="route:menu")],
         ])
 
     return InlineKeyboardMarkup([
@@ -347,7 +355,7 @@ async def fileid(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     source = "Telegram file_id" if cached_video_file_id else "GitHub Releases"
     await update.message.reply_text(
-        "🛠 Ferixdi Bot v3.2\n"
+        "🛠 Ferixdi Bot v3.3\n"
         "16 мифов и кнопки активны.\n"
         f"Видео: источник {source}.\n"
         f"Примеры: {len(example_photo_ids)} фото."
@@ -439,6 +447,8 @@ async def final_route(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "join": JOIN_TEXT,
         "student": STUDENT_TEXT,
         "budget": BUDGET_TEXT,
+        "easy": EASY_TEXT,
+        "skilled": SKILLED_TEXT,
         "market": MARKET_TEXT,
         "zero": ZERO_TEXT,
         "later": LATER_TEXT,
@@ -466,7 +476,7 @@ appbot.add_handler(CallbackQueryHandler(show_examples, pattern=r"^show_examples$
 appbot.add_handler(CallbackQueryHandler(more_examples, pattern=r"^more_examples$"))
 appbot.add_handler(CallbackQueryHandler(final_video, pattern=r"^final_video$"))
 appbot.add_handler(CallbackQueryHandler(video_finished, pattern=r"^video_finished$"))
-appbot.add_handler(CallbackQueryHandler(final_route, pattern=r"^route:(menu|doubts|join|student|budget|market|zero|later)$"))
+appbot.add_handler(CallbackQueryHandler(final_route, pattern=r"^route:(menu|doubts|join|student|budget|market|zero|easy|skilled|later)$"))
 
 @asynccontextmanager
 async def lifespan(app):
