@@ -27,7 +27,16 @@ TOKEN = os.environ["BOT_TOKEN"]
 WEBHOOK_BASE_URL = (os.getenv("WEBHOOK_BASE_URL") or "https://" + os.environ["RENDER_EXTERNAL_HOSTNAME"]).rstrip("/")
 WEBHOOK_SECRET = os.environ["WEBHOOK_SECRET"]
 PATH = "/telegram/webhook"
-appbot = Application.builder().token(TOKEN).updater(None).build()
+# Process several Telegram updates simultaneously, instead of making every
+# visitor wait while another chat uploads a first-time GIF.
+# Official PTB update_queue handles dispatch and clean shutdown.
+appbot = (
+    Application.builder()
+    .token(TOKEN)
+    .updater(None)
+    .concurrent_updates(8)
+    .build()
+)
 cached_video_file_id = os.getenv("VIDEO_FILE_ID", "").strip()
 MAX_EXAMPLE_PHOTOS = 11
 # Exact original JPG attached by the author and committed to GitHub assets.
@@ -1289,5 +1298,11 @@ async def telegram_webhook(request: Request):
     if not hmac.compare_digest(sent, WEBHOOK_SECRET):
         raise HTTPException(status_code=403)
     payload = await request.json()
-    await appbot.process_update(Update.de_json(payload, appbot.bot))
+    update = Update.de_json(payload, appbot.bot)
+    if update is None:
+        raise HTTPException(status_code=400, detail="Invalid Telegram update")
+    # Do not hold Telegram's webhook open for slow media API requests. Telegram
+    # expects an immediate HTTP acknowledgment; PTB's running worker consumes
+    # queued updates with bounded parallelism from concurrent_updates(8).
+    appbot.update_queue.put_nowait(update)
     return {"ok": True}
