@@ -628,9 +628,24 @@ def prefetch_upcoming_step(number: int):
         or number in prefetched_step_tasks
     ):
         return
+    # A finished download is the whole point of prefetching: retain its bytes
+    # until get_lesson_mp4() consumes them. Previous code deleted finished
+    # tasks before use and forced a second download.
     for previous, task in list(prefetched_step_tasks.items()):
-        if task.done():
+        if task.done() and (
+            task.cancelled()
+            or task.exception() is not None
+            or task.result() is None
+        ):
             prefetched_step_tasks.pop(previous, None)
+
+    if len(prefetched_step_tasks) >= 2:
+        # The cap still bounds memory. Evict the oldest completed unused
+        # prefetch for a newer lesson; never cancel an in-flight download.
+        for previous, task in list(prefetched_step_tasks.items()):
+            if task.done():
+                prefetched_step_tasks.pop(previous, None)
+                break
     if len(prefetched_step_tasks) >= 2:
         return
     prefetched_step_tasks[number] = appbot.create_task(load_step_mp4(number))
