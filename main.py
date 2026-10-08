@@ -593,7 +593,7 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "16 мифов в 10 разборах. Кнопки активны.\n"
         f"Видео: источник {source}.\n"
         f"Примеры: {len(example_photo_ids)} фото" + (" (по лайкам).\n" if photo_gallery_sorted else ".\n")
-        + f"GIF к разборам: {len(step_animation_ids) + int(1 not in step_animation_ids and bool(cached_first_step_animation_id))}/{len(STEPS)}.\\n"
+        + f"GIF к разборам: {len(step_animation_ids) + int(1 not in step_animation_ids and bool(cached_first_step_animation_id))}/{len(STEPS)}.\n"
         + ("Первый разбор: MP4 подключён, GIF создаётся при первом показе."
            if 1 not in step_animation_ids and not cached_first_step_animation_id
            else "Первый разбор: GIF готов." if 1 in step_animation_ids or cached_first_step_animation_id
