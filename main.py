@@ -1,6 +1,7 @@
 import os
 import hmac
 import logging
+from html import escape
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -24,16 +25,16 @@ cached_video_file_id = os.getenv("VIDEO_FILE_ID", "").strip()
 
 def keyboard(index: int):
     if index == -1:
-        label = "🔥 Узнать первый миф"
+        label = "⏰ Правда, что время решает?"
     elif index < len(STEPS) - 1:
         label = STEPS[index]["button"]
     elif index == len(STEPS) - 1:
-        label = "📊 Посмотреть реальные кейсы"
+        label = "📊 Покажи свои реальные цифры"
     elif index == len(STEPS):
-        label = "🎬 Покажи, что за кадром"
+        label = "🎥 А как ты это делаешь?"
     elif index == len(STEPS) + 1:
         return InlineKeyboardMarkup([[
-            InlineKeyboardButton("🎥 Покажи весь процесс", callback_data="final_video")
+            InlineKeyboardButton("🎬 Забрать видео с разбором", callback_data="final_video")
         ]])
     else:
         return InlineKeyboardMarkup([[
@@ -46,14 +47,18 @@ def page(index: int):
         return INTRO
     if index < len(STEPS):
         step = STEPS[index]
-        return f'🔥 МИФ №{index+1} ИЗ {len(STEPS)}\n\n❌ {step["myth"]}\n\n✅ МОЙ ОПЫТ\n{step["answer"]}'
+        return (
+            f'🏁 <b>МИФ {index+1:02d}/{len(STEPS)}</b>\n\n'
+            f'<b>{escape(step["myth"])}</b>\n\n'
+            f'{escape(step["answer"])}'
+        )
     if index == len(STEPS):
         return CASES
     return VIDEO_HOOK
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message:
-        await update.message.reply_text(page(-1), reply_markup=keyboard(-1), disable_web_page_preview=True)
+        await update.message.reply_text(page(-1), reply_markup=keyboard(-1), disable_web_page_preview=True, parse_mode="HTML")
 
 async def next_step(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -68,7 +73,7 @@ async def next_step(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_reply_markup(reply_markup=None)
     except Exception:
         pass
-    await query.message.reply_text(page(index), reply_markup=keyboard(index), disable_web_page_preview=True)
+    await query.message.reply_text(page(index), reply_markup=keyboard(index), disable_web_page_preview=True, parse_mode="HTML")
     log.info("funnel_step=%s", index)
 
 def id_message(file_id: str) -> str:
@@ -120,7 +125,7 @@ async def deliver_original_video(source_message):
     """Send the unchanged MP4 document, keeping the webhook response fast."""
     global cached_video_file_id
     markup = InlineKeyboardMarkup([[
-        InlineKeyboardButton("📊 Все реальные кейсы с нуля", url=CASES_URL)
+        InlineKeyboardButton("📊 Посмотреть реальные кейсы", url=CASES_URL)
     ]])
     try:
         if cached_video_file_id:
@@ -128,6 +133,7 @@ async def deliver_original_video(source_message):
                 chat_id=source_message.chat_id,
                 document=cached_video_file_id,
                 caption=VIDEO_CAPTION,
+                parse_mode="HTML",
                 reply_markup=markup,
                 read_timeout=180,
                 write_timeout=180,
@@ -140,6 +146,7 @@ async def deliver_original_video(source_message):
                     document=video,
                     filename="ferixdi-process.mp4",
                     caption=VIDEO_CAPTION,
+                parse_mode="HTML",
                     reply_markup=markup,
                     read_timeout=180,
                     write_timeout=180,
