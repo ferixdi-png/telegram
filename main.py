@@ -32,7 +32,9 @@ cached_video_file_id = os.getenv("VIDEO_FILE_ID", "").strip()
 MAX_EXAMPLE_PHOTOS = 11
 # Exact original JPG attached by the author and committed to GitHub assets.
 # If present, ALGORITHM_PHOTO_FILE_ID env is an optional Telegram-side override.
-ALGORITHM_PHOTO_FILE_ID = os.getenv("ALGORITHM_PHOTO_FILE_ID", "").strip()
+# Telegram photo ID supplied by the author via /algimage. No Render setup needed.
+DEFAULT_ALGORITHM_PHOTO_FILE_ID = "AgACAgIAAxkBAAIBI2rHgX1h1MUnUXHy6x-xm0efe3kiAAKBGWsb0ek4SmS2X-tbmmN1AQADAgADeQADPQQ"
+ALGORITHM_PHOTO_FILE_ID = (os.getenv("ALGORITHM_PHOTO_FILE_ID") or DEFAULT_ALGORITHM_PHOTO_FILE_ID).strip()
 ALGORITHM_IMAGE_PATH = Path(__file__).resolve().parent / "assets" / "instagram_algorithm_meme.jpg"
 cached_algorithm_photo_id = None
 
@@ -1011,7 +1013,7 @@ async def bot_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     source = "Telegram file_id" if cached_video_file_id else "GitHub Releases (проверь, прикреплён ли MP4)"
     await update.message.reply_text(
-        "🛠 Ferixdi Bot v4.20\n"
+        "🛠 Ferixdi Bot v4.21\n"
         "16 мифов в 10 разборах. Кнопки активны.\n"
         f"Видео: источник {source}.\n"
         f"Примеры: {len(example_photo_ids)} фото.\n"
@@ -1108,12 +1110,13 @@ async def video_finished(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def send_algorithm_article(query):
-    """Send the exact artwork once and reuse Telegram's cached photo ID."""
+    """Send the author's photo by Telegram ID, fall back to the original JPG."""
     global cached_algorithm_photo_id
     buttons = route_keyboard("algorithm")
-    photo_id = ALGORITHM_PHOTO_FILE_ID or cached_algorithm_photo_id
-    try:
-        if photo_id:
+    photo_id = cached_algorithm_photo_id or ALGORITHM_PHOTO_FILE_ID
+
+    if photo_id:
+        try:
             sent = await appbot.bot.send_photo(
                 chat_id=query.message.chat_id,
                 photo=photo_id,
@@ -1123,23 +1126,31 @@ async def send_algorithm_article(query):
                 read_timeout=120,
                 write_timeout=120,
             )
-        else:
-            with ALGORITHM_IMAGE_PATH.open("rb") as original:
-                sent = await appbot.bot.send_photo(
-                    chat_id=query.message.chat_id,
-                    photo=original,
-                    caption=ALGORITHM_TEXT,
-                    parse_mode="HTML",
-                    reply_markup=buttons,
-                    read_timeout=120,
-                    write_timeout=120,
-                )
+            if sent.photo:
+                cached_algorithm_photo_id = sent.photo[-1].file_id
+            log.info("funnel_algorithm_photo_sent")
+            return
+        except TelegramError as exc:
+            log.warning("Algorithm Q&A Telegram photo ID failed: %s", type(exc).__name__)
+
+    # Preserve a real image even if Telegram expires or rejects the supplied ID.
+    try:
+        with ALGORITHM_IMAGE_PATH.open("rb") as original:
+            sent = await appbot.bot.send_photo(
+                chat_id=query.message.chat_id,
+                photo=original,
+                caption=ALGORITHM_TEXT,
+                parse_mode="HTML",
+                reply_markup=buttons,
+                read_timeout=120,
+                write_timeout=120,
+            )
         if sent.photo:
             cached_algorithm_photo_id = sent.photo[-1].file_id
-        log.info("funnel_algorithm_photo_sent")
+        log.info("funnel_algorithm_photo_uploaded_from_repo")
         return
     except (TelegramError, OSError) as exc:
-        log.warning("Algorithm Q&A image failed: %s", type(exc).__name__)
+        log.warning("Algorithm Q&A original JPG failed: %s", type(exc).__name__)
 
     await query.message.reply_text(
         ALGORITHM_TEXT,
@@ -1148,7 +1159,6 @@ async def send_algorithm_article(query):
         disable_web_page_preview=True,
     )
     log.info("funnel_algorithm_text_fallback")
-
 
 async def final_route(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
