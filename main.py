@@ -3,6 +3,7 @@ import hmac
 import logging
 import asyncio
 import io
+from pathlib import Path
 from html import escape
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
@@ -29,9 +30,11 @@ PATH = "/telegram/webhook"
 appbot = Application.builder().token(TOKEN).updater(None).build()
 cached_video_file_id = os.getenv("VIDEO_FILE_ID", "").strip()
 MAX_EXAMPLE_PHOTOS = 11
-# Set to Telegram photo/document ID after /algimage; never reuse VIDEO_FILE_ID.
-DEFAULT_ALGORITHM_PHOTO_FILE_ID = ""  # Set after author supplies /algimage ID.
-ALGORITHM_PHOTO_FILE_ID = (os.getenv("ALGORITHM_PHOTO_FILE_ID") or DEFAULT_ALGORITHM_PHOTO_FILE_ID).strip()
+# Exact original JPG attached by the author and committed to GitHub assets.
+# If present, ALGORITHM_PHOTO_FILE_ID env is an optional Telegram-side override.
+ALGORITHM_PHOTO_FILE_ID = os.getenv("ALGORITHM_PHOTO_FILE_ID", "").strip()
+ALGORITHM_IMAGE_PATH = Path(__file__).resolve().parent / "assets" / "instagram_algorithm_meme.jpg"
+cached_algorithm_photo_id = None
 
 
 # Verified likes on the 11 screenshot originals, matched to the Telegram IDs
@@ -1104,6 +1107,49 @@ async def video_finished(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log.info("funnel_final_menu_opened")
 
 
+async def send_algorithm_article(query):
+    """Send the exact artwork once and reuse Telegram's cached photo ID."""
+    global cached_algorithm_photo_id
+    buttons = route_keyboard("algorithm")
+    photo_id = ALGORITHM_PHOTO_FILE_ID or cached_algorithm_photo_id
+    try:
+        if photo_id:
+            sent = await appbot.bot.send_photo(
+                chat_id=query.message.chat_id,
+                photo=photo_id,
+                caption=ALGORITHM_TEXT,
+                parse_mode="HTML",
+                reply_markup=buttons,
+                read_timeout=120,
+                write_timeout=120,
+            )
+        else:
+            with ALGORITHM_IMAGE_PATH.open("rb") as original:
+                sent = await appbot.bot.send_photo(
+                    chat_id=query.message.chat_id,
+                    photo=original,
+                    caption=ALGORITHM_TEXT,
+                    parse_mode="HTML",
+                    reply_markup=buttons,
+                    read_timeout=120,
+                    write_timeout=120,
+                )
+        if sent.photo:
+            cached_algorithm_photo_id = sent.photo[-1].file_id
+        log.info("funnel_algorithm_photo_sent")
+        return
+    except (TelegramError, OSError) as exc:
+        log.warning("Algorithm Q&A image failed: %s", type(exc).__name__)
+
+    await query.message.reply_text(
+        ALGORITHM_TEXT,
+        reply_markup=buttons,
+        parse_mode="HTML",
+        disable_web_page_preview=True,
+    )
+    log.info("funnel_algorithm_text_fallback")
+
+
 async def final_route(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -1121,29 +1167,7 @@ async def final_route(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "later": LATER_TEXT,
     }
     if route == "algorithm":
-        buttons = route_keyboard("algorithm")
-        if ALGORITHM_PHOTO_FILE_ID:
-            try:
-                await appbot.bot.send_photo(
-                    chat_id=query.message.chat_id,
-                    photo=ALGORITHM_PHOTO_FILE_ID,
-                    caption=ALGORITHM_TEXT,
-                    parse_mode="HTML",
-                    reply_markup=buttons,
-                    read_timeout=120,
-                    write_timeout=120,
-                )
-                log.info("funnel_algorithm_photo_sent")
-                return
-            except TelegramError as exc:
-                log.warning("Algorithm Q&A image failed: %s", type(exc).__name__)
-        await query.message.reply_text(
-            ALGORITHM_TEXT,
-            reply_markup=buttons,
-            parse_mode="HTML",
-            disable_web_page_preview=True,
-        )
-        log.info("funnel_algorithm_text_fallback")
+        await send_algorithm_article(query)
         return
 
     if route not in copy:
